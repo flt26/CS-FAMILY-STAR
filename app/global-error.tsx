@@ -25,7 +25,7 @@ export default function GlobalError({ retry }: { error: unknown; retry: () => vo
           Something broke while printing this page. It’s on us, not you.
           <br />
           <span lang="ar" dir="rtl">
-            حصلت مشكلة، جرب تاني
+            حصلت مشكلة، نجرب تاني؟
           </span>
         </p>
         <button

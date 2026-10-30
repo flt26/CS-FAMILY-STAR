@@ -45,16 +45,18 @@ long receipt called **The menu**.
   another). When it posts you get "Heard! / اتسجل! تسلم إيدك", a git-style
   commit line and a printed receipt.
 - **Spot pages** — the order ticket with the average, a histogram and the
-  first reviewer; reviews with words or photos print as receipts, quick
-  ratings are summed up on one slip.
+  first reviewer; reviews with words or photos print as receipts, and
+  rating-only reviews are summed up on one slip.
 - **Type** — Archivo at 62% width for headlines, Handjet's dot-matrix for
   numbers and Arabic headlines, IBM Plex Mono for receipts, IBM Plex Sans
   Arabic for Arabic text. All self-hosted through `next/font`.
 - **Colour** — ink `#161412`, chalk `#F3EFE6`, thermal paper `#F8F6F0`,
   ticket paper `#EFE7D5`, print `#1B1815`, and two reds: `#BF2A1C` on paper,
   `#FF5D40` on ink. Tokens live in `app/globals.css` (`@theme`).
-- **Colour has two jobs** — red is for the main action and for "nope" (1–2
-  star) verdicts; everything else prints in ink.
+- **Colour has two jobs** — red is for actions (keys, the chosen filter) and
+  for "nope" (1-star) verdicts. Ranks, tags and labels print in ink. The only
+  decorative red is the brand's own marks: the star, the hero's question and
+  the POSTED stamp.
 - **Motion** — the menu feeds out of the printer slot once per visit, the
   POSTED stamp lands, the search caret blinks on desktop. All of it switches
   off with `prefers-reduced-motion`.
@@ -100,8 +102,9 @@ behind a proxy that sets that header. To close the remaining gaps:
 
 1. **Stop anonymous writes.** Add `SUPABASE_SERVICE_ROLE_KEY` to the Vercel
    project, redeploy, then run `supabase/hardening.sql` in the Supabase SQL
-   editor. It drops every policy that lets the public key write to `reviews`
-   or upload to the photo bucket, adds constraints, and is safe to run again.
+   editor. It adds constraints, and restrictive policies that keep the public
+   key from writing reviews or touching the photo bucket, whatever other
+   policies say. Other buckets keep their policies. It is safe to run again.
    Until then the database has to accept inserts with the public key, which
    lets people skip the app's checks by calling Supabase directly.
 2. **Real identities.** Sign-in with an `@fue.edu.eg` email (Supabase Auth magic

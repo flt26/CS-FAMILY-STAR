@@ -4,7 +4,7 @@ import { updateTag } from 'next/cache';
 import { headers } from 'next/headers';
 import sharp from 'sharp';
 import { USING_DEFAULT_PROJECT } from '@/lib/config';
-import { clientAddress, reserveReview } from '@/lib/rate-limit';
+import { claimReview, clientAddress, reserveReview } from '@/lib/rate-limit';
 import { LIMITS, parseReviewForm, sniffImage, type FieldErrors, type ReviewInput } from '@/lib/review-input';
 import { REVIEW_IMAGES_BUCKET, supabase } from '@/lib/supabase';
 
@@ -12,8 +12,6 @@ export type ReviewState =
   | { status: 'idle' }
   | { status: 'error'; message: string; fields?: FieldErrors }
   | { status: 'done'; spotId: string; rating: number; at: string; first: boolean };
-
-const DUPLICATE_WINDOW_MS = 10 * 60 * 1000;
 
 export async function submitReview(_previous: ReviewState, form: FormData): Promise<ReviewState> {
   // Only the deployed site writes to the live project. A local build with no
@@ -36,7 +34,8 @@ export async function submitReview(_previous: ReviewState, form: FormData): Prom
     return { status: 'done', spotId, rating, at: new Date().toISOString(), first: false };
   }
 
-  const slot = reserveReview(clientAddress(await headers()), name);
+  const address = clientAddress(await headers());
+  const slot = reserveReview(address, name);
   if (!slot.ok) {
     return {
       status: 'error',
@@ -47,37 +46,60 @@ export async function submitReview(_previous: ReviewState, form: FormData): Prom
     };
   }
 
-  // A verdict that didn't save hands its slot back, so retrying isn't punished.
+  // From here on a mistake on the client's side (the same review again, a
+  // photo we can't use) keeps its slot, so it can't make the server work for
+  // free. Only our own failures hand the slot back.
+  const repeat = claimReview(address, parsed.value);
+  if (!repeat.ok) {
+    return { status: 'error', message: 'You just posted this exact review. It’s already on the ticket.' };
+  }
+
   try {
-    const result = await postReview(parsed.value, form.get('photo'));
-    if (result.status !== 'done') slot.release();
+    const photo = await readPhoto(form.get('photo'));
+    if (!photo.ok) {
+      repeat.release();
+      return photo.error;
+    }
+    const result = await saveReview(parsed.value, photo.image);
+    if (result.status !== 'done') {
+      repeat.release();
+      slot.release();
+    }
     return result;
   } catch (error) {
+    repeat.release();
     slot.release();
     throw error;
   }
 }
 
-async function postReview(
-  { spotId, rating, name, comment }: ReviewInput,
+/** The photo, re-encoded, or the reason it can't be used. No photo is fine. */
+async function readPhoto(
   photo: FormDataEntryValue | null,
+): Promise<{ ok: true; image: Buffer | null } | { ok: false; error: ReviewState }> {
+  if (!(photo instanceof File) || photo.size === 0) return { ok: true, image: null };
+  if (photo.size > LIMITS.photoBytes) {
+    return {
+      ok: false,
+      error: { status: 'error', message: 'That photo is too big.', fields: { photo: 'Photos can be up to 3 MB.' } },
+    };
+  }
+  const image = await reencode(new Uint8Array(await photo.arrayBuffer()));
+  if (!image) {
+    return {
+      ok: false,
+      error: { status: 'error', message: 'We could not read that photo.', fields: { photo: 'Use a JPG, PNG or WebP.' } },
+    };
+  }
+  return { ok: true, image };
+}
+
+/** Stores the photo and the review. Any failure here is on our side. */
+async function saveReview(
+  { spotId, rating, name, comment }: ReviewInput,
+  image: Buffer | null,
 ): Promise<ReviewState> {
   const db = supabase();
-
-  // Catches double taps and copy-paste spam: the very same verdict again. Two
-  // students who happen to shuffle the same nickname still both get through.
-  const since = new Date(Date.now() - DUPLICATE_WINDOW_MS).toISOString();
-  const { count } = await db
-    .from('reviews')
-    .select('id', { count: 'exact', head: true })
-    .eq('restaurant_id', spotId)
-    .eq('user_name', name)
-    .eq('rating', rating)
-    .eq('comment', comment)
-    .gte('created_at', since);
-  if (count) {
-    return { status: 'error', message: 'You just posted this exact review. It’s already on the ticket.' };
-  }
 
   // Whether this verdict is the spot's first, for the "root commit" receipt.
   // Counted the way the scoreboard counts: ratings outside 1–5 don't exist.
@@ -90,14 +112,7 @@ async function postReview(
 
   let imageUrl: string | null = null;
   let imagePath: string | null = null;
-  if (photo instanceof File && photo.size > 0) {
-    if (photo.size > LIMITS.photoBytes) {
-      return { status: 'error', message: 'That photo is too big.', fields: { photo: 'Photos can be up to 3 MB.' } };
-    }
-    const image = await reencode(new Uint8Array(await photo.arrayBuffer()));
-    if (!image) {
-      return { status: 'error', message: 'We could not read that photo.', fields: { photo: 'Use a JPG, PNG or WebP.' } };
-    }
+  if (image) {
     imagePath = `reviews/${spotId}/${crypto.randomUUID()}.webp`;
     const { error } = await db.storage
       .from(REVIEW_IMAGES_BUCKET)
@@ -135,7 +150,9 @@ async function postReview(
 async function reencode(bytes: Uint8Array): Promise<Buffer | null> {
   if (!sniffImage(bytes)) return null;
   try {
-    return await sharp(bytes, { limitInputPixels: 50_000_000 })
+    // The browser already shrank it to 1600px; 4096² still fits a phone's
+    // original photo and keeps a decompression bomb cheap to refuse.
+    return await sharp(bytes, { limitInputPixels: 4096 * 4096 })
       .autoOrient()
       .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
       .webp({ quality: 82 })

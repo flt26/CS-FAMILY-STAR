@@ -35,7 +35,7 @@ export function Slip({
         {first && (
           <span className="slip__flag">
             <Asterisk />
-            Initial commit
+            First review
           </span>
         )}
       </p>

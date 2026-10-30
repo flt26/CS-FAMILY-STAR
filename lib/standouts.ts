@@ -25,16 +25,19 @@ export function pickStandouts(board: Scoreboard, recent: Review[], size = 5): Ti
   };
 
   const rated = SPOTS.filter((spot) => board.stats[spot.id]);
+  // The menu's own order (few verdicts count less), so a ticket's label always
+  // agrees with the rank printed on it.
   const byScore = [...rated].sort(
     (a, b) => rankScore(board.stats[b.id], board.mean) - rankScore(board.stats[a.id], board.mean),
   );
-  // A single verdict is not a reputation; prefer spots backed by a few people.
-  const backed = byScore.filter((spot) => board.stats[spot.id].count >= 2);
+  const mostCount = Math.max(0, ...rated.map((spot) => board.stats[spot.id].count));
 
-  add('top', (backed.length ? backed : byScore)[0]);
+  add('top', byScore[0]);
+  // Only a spot with the most reviews gets that label. If #1 is also the most
+  // reviewed it stays "Top rated" and this ticket is skipped.
   add(
     'most',
-    [...rated].sort((a, b) => board.stats[b.id].count - board.stats[a.id].count).find((spot) => !used.has(spot.id)),
+    byScore.find((spot) => board.stats[spot.id].count === mostCount && !used.has(spot.id)),
   );
   add(
     'campus',

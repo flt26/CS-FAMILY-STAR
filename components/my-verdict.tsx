@@ -9,7 +9,7 @@ export function MyVerdict({ spotId }: { spotId: string }) {
   if (!rating) return null;
   return (
     <p className="order__mine label">
-      You gave it {rating}/5 · {VERDICTS[rating]?.cs ?? ''} <span className="muted">(this device)</span>
+      You gave it {rating}/5 · {VERDICTS[rating]?.word ?? ''} <span className="muted">(this device)</span>
     </p>
   );
 }

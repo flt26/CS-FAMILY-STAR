@@ -53,6 +53,24 @@ create policy "Reviews are readable by everyone"
   to anon, authenticated
   using (true);
 
+-- Restrictive policies are ANDed with every other policy, so a write policy
+-- added later in the dashboard still can't open the table to the public key.
+drop policy if exists "Only the app adds reviews" on public.reviews;
+create policy "Only the app adds reviews"
+  on public.reviews as restrictive for insert
+  to anon, authenticated
+  with check (false);
+drop policy if exists "Only the app changes reviews" on public.reviews;
+create policy "Only the app changes reviews"
+  on public.reviews as restrictive for update
+  to anon, authenticated
+  using (false);
+drop policy if exists "Only the app removes reviews" on public.reviews;
+create policy "Only the app removes reviews"
+  on public.reviews as restrictive for delete
+  to anon, authenticated
+  using (false);
+
 -- 3) Storage: photos stay public to read; size and type are capped at the bucket.
 update storage.buckets
 set public = true,
@@ -60,21 +78,24 @@ set public = true,
     allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp']
 where id = 'review-images';
 
--- The app uploads with the service role, so no policy may let anyone else
--- write to the bucket. Drop every write policy on storage.objects that names
--- review-images, or that names no bucket at all (it would cover this one too).
-do $$
-declare
-  p record;
-begin
-  for p in
-    select policyname, coalesce(qual, '') || ' ' || coalesce(with_check, '') as rule
-    from pg_policies
-    where schemaname = 'storage' and tablename = 'objects' and cmd <> 'SELECT'
-  loop
-    if p.rule like '%review-images%' or p.rule not like '%bucket_id%' then
-      raise notice 'Dropping policy % on storage.objects', p.policyname;
-      execute format('drop policy %I on storage.objects', p.policyname);
-    end if;
-  end loop;
-end $$;
+-- The app uploads with the service role. These restrictive policies keep the
+-- public key out of the review-images bucket whatever other policies say,
+-- and leave every other bucket's policies as they are.
+drop policy if exists "Only the app uploads review photos" on storage.objects;
+create policy "Only the app uploads review photos"
+  on storage.objects as restrictive for insert
+  to anon, authenticated
+  with check (bucket_id <> 'review-images');
+
+drop policy if exists "Only the app changes review photos" on storage.objects;
+create policy "Only the app changes review photos"
+  on storage.objects as restrictive for update
+  to anon, authenticated
+  using (bucket_id <> 'review-images')
+  with check (bucket_id <> 'review-images');
+
+drop policy if exists "Only the app removes review photos" on storage.objects;
+create policy "Only the app removes review photos"
+  on storage.objects as restrictive for delete
+  to anon, authenticated
+  using (bucket_id <> 'review-images');

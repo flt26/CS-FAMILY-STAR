@@ -10,7 +10,7 @@ import { Slip, tiltFor } from '@/components/slip';
 import { formatDate, langOf, plural } from '@/lib/format';
 import { getScoreboard, getSpotReviews, type Review, type Scoreboard, type SpotStats } from '@/lib/reviews';
 import { rankOf, rankScore } from '@/lib/score';
-import { AREAS, CRAVINGS, getSpot, mapsUrl, SPOTS, type Spot } from '@/lib/spots';
+import { AREAS, branchOf, CRAVINGS, getSpot, mapsUrl, SPOTS, type Spot } from '@/lib/spots';
 import { VERDICTS } from '@/lib/verdicts';
 
 export function generateStaticParams() {
@@ -20,7 +20,9 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: PageProps<'/spot/[id]'>): Promise<Metadata> {
   const { id } = await params;
   const spot = getSpot(id);
-  if (!spot) return { title: 'Not on the menu' };
+  // Link-preview bots wait for metadata before anything streams, so this
+  // gives them a real 404. Browsers get the not-found page from SpotDetails.
+  if (!spot) notFound();
   const board = await getScoreboard();
   const stats = board.stats[spot.id];
   const where = `${CRAVINGS[spot.craving].en} · ${spot.vicinity}`;
@@ -28,7 +30,7 @@ export async function generateMetadata({ params }: PageProps<'/spot/[id]'>): Pro
     title: `${spot.brand} · ${AREAS[spot.area].en}`,
     description: stats
       ? `${stats.average.toFixed(1)}/5 from ${plural(stats.count, 'student review')}. ${where}. On CS Family Star.`
-      : `${where}. See what FUE students say about ${spot.brand}, or be the first to rate it.`,
+      : `${where}. No reviews yet: be the first to rate ${spot.brand} on CS Family Star.`,
     alternates: { canonical: `/spot/${spot.id}` },
   };
 }
@@ -101,16 +103,16 @@ function Tally({ reviews, said }: { reviews: Review[]; said: boolean }) {
       <p className="slip__top label">
         <span>
           {said ? '+ ' : ''}
-          {plural(reviews.length, 'quick rating')}
+          {plural(reviews.length, 'review')}
         </span>
-        <span>no comment</span>
+        <span>rating only</span>
       </p>
       {counts
         .filter(([, count]) => count > 0)
         .map(([star, count]) => (
           <p className="leader" key={star}>
             <span>
-              {star}/5 · {VERDICTS[star].cs}
+              {star}/5 · {VERDICTS[star].word}
             </span>
             <b>×{count}</b>
           </p>
@@ -130,7 +132,7 @@ function OrderTicket({
   stats: SpotStats | undefined;
   first: Review | null;
 }) {
-  const branch = spot.name.startsWith(`${spot.brand} - `) ? spot.name.slice(spot.brand.length + 3) : null;
+  const branch = branchOf(spot);
   const rank = rankOf(stats, board);
   const verdict = stats ? VERDICTS[Math.round(stats.average)] : null;
   // During an outage a rated spot must not look like an open ticket.
@@ -140,11 +142,11 @@ function OrderTicket({
     <article className="order paper torn-b shadowed" aria-labelledby="spot-title">
       <div className="order__top">
         {rank ? (
-          <span className={rank <= 3 ? 'tag' : 'tag tag--ink'}>
-            Rank #{String(rank).padStart(2, '0')} of {Object.keys(board.stats).length}
+          <span className="tag">
+            Rank #{String(rank).padStart(2, '0')} of {Object.keys(board.stats).length} rated
           </span>
         ) : open ? (
-          <span className="tag tag--open">Open ticket</span>
+          <span className="tag tag--open">No reviews yet</span>
         ) : (
           <span className="tag tag--ink">Scores offline</span>
         )}
@@ -178,7 +180,7 @@ function OrderTicket({
           <div className="rule-dash" />
           <Histogram stats={stats} />
         </>
-      ) : (
+      ) : open ? (
         <div className="blank" aria-hidden="true">
           <span>Score</span>
           <span className="blank__box">
@@ -188,19 +190,32 @@ function OrderTicket({
           <span>First review by</span>
           <span className="blank__line" />
         </div>
+      ) : (
+        <div className="order__total order__total--offline">
+          <span className="label">Avg</span>
+          <span className="label">Offline for a moment</span>
+          <p className="order__score dot" aria-hidden="true">
+            --
+            <small>/5</small>
+          </p>
+        </div>
       )}
 
       <div className="order__actions">
         <RateTrigger spotId={spot.id} open={open} className="key key--red">
           <span>{open ? 'Be the first' : 'Rate it'}</span>
           <span className="ar" lang="ar" dir="rtl">
-            {open ? 'خليك الأول' : 'قيّمه'}
+            {open ? 'يلا أول تقييم' : 'يلا نقيّمه'}
           </span>
         </RateTrigger>
         <a className="key key--paper" href={mapsUrl(spot)} target="_blank" rel="noopener noreferrer">
           Maps <span aria-hidden="true">↗</span>
         </a>
-        <ShareButton path={`/spot/${spot.id}`} title={`${spot.brand} on CS Family Star`} className="key key--paper" />
+        <ShareButton
+          path={`/spot/${spot.id}`}
+          title={`${spot.brand}${branch ? ` (${branch})` : ''} on CS Family Star`}
+          className="key key--paper"
+        />
       </div>
       <MyVerdict spotId={spot.id} />
       {first && (
@@ -226,7 +241,7 @@ function Histogram({ stats }: { stats: SpotStats }) {
         return (
           <div className="histogram__row" key={star} aria-hidden="true">
             <span className="dot">{star}</span>
-            <span className="histogram__word">{VERDICTS[star].cs}</span>
+            <span className="histogram__word">{VERDICTS[star].word}</span>
             <span className="histogram__bar">
               <span style={{ width: `${(count / most) * 100}%` }} />
             </span>
@@ -269,7 +284,7 @@ function SameCounter({ spot, board }: { spot: Spot; board: Scoreboard }) {
                 {stats ? (
                   <span className="dot">{stats.average.toFixed(1)}</span>
                 ) : board.ok ? (
-                  <span className="open">open</span>
+                  <span className="open">no reviews</span>
                 ) : (
                   <span className="dot">--</span>
                 )}

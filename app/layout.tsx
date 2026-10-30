@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: { default: `${SITE_NAME} — where are we eating today?`, template: `%s · ${SITE_NAME}` },
   description:
-    `${SPOTS.length} food spots around Future University in Egypt, rated 1 to 5 by the students who eat there. Made by the CS Family.`,
+    `${SPOTS.length} food spots around Future University in Egypt. Students rate them 1 to 5. Made by the CS Family.`,
   applicationName: SITE_NAME,
   openGraph: { siteName: SITE_NAME, type: 'website', locale: 'en_EG' },
   twitter: { card: 'summary_large_image' },

@@ -27,7 +27,10 @@ async function googleFont(family: string): Promise<ArrayBuffer> {
   return (await fetchOk(url)).arrayBuffer();
 }
 
-/** The three share-image fonts, or none (next/og's built-in sans) if Google Fonts can't be reached. */
+/**
+ * The three share-image fonts, or undefined if Google Fonts can't be reached:
+ * next/og then uses its built-in sans. (An empty list would make it throw.)
+ */
 export async function ogFonts() {
   try {
     const [display, dot, mono] = await Promise.all([
@@ -42,7 +45,7 @@ export async function ogFonts() {
     ];
   } catch (error) {
     console.error('Share image fonts unavailable:', error);
-    return [];
+    return undefined;
   }
 }
 

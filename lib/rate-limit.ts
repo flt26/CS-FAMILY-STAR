@@ -1,4 +1,5 @@
 import 'server-only';
+import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
 
 // Per-instance sliding windows. On serverless hosts every instance keeps its
@@ -54,10 +55,12 @@ class SlidingWindow {
 
 const perAddress = new SlidingWindow(30, 10 * MINUTE);
 const perAuthor = new SlidingWindow(6, 10 * MINUTE, 15 * 1000);
+const repeats = new SlidingWindow(1, 10 * MINUTE);
 
 /**
  * Reserves one review for this address and nickname. Release the slot when
- * the review did not save, so a retry isn't counted twice.
+ * the review failed on our side (storage, database), so a retry isn't counted
+ * twice. A client's own mistake keeps it.
  */
 export function reserveReview(address: string, name: string, now = Date.now()): Slot {
   const byAddress = perAddress.take(address, now);
@@ -74,6 +77,21 @@ export function reserveReview(address: string, name: string, now = Date.now()): 
       byAuthor.release();
     },
   };
+}
+
+/**
+ * Claims this exact review (same spot, nickname, rating and comment from the
+ * same address) for ten minutes, so a resend after a lost response isn't
+ * posted twice. Two students who shuffle the same nickname both get through.
+ * Release it when the review did not save.
+ */
+export function claimReview(
+  address: string,
+  review: { spotId: string; name: string; rating: number; comment: string },
+  now = Date.now(),
+): Slot {
+  const key = [address, review.spotId, review.name.toLowerCase(), review.rating, review.comment].join('\n');
+  return repeats.take(createHash('sha256').update(key).digest('base64url'), now);
 }
 
 /**

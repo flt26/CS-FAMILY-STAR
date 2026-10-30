@@ -1,5 +1,6 @@
+/** "12 reviews", with a no-break space so the number never ends a line on its own. */
 export function plural(count: number, one: string, many = `${one}s`): string {
-  return `${count} ${count === 1 ? one : many}`;
+  return `${count}\u00a0${count === 1 ? one : many}`;
 }
 
 // Fixed locale and time zone so the server and the browser print the same date.

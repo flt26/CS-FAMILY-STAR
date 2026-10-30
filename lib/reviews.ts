@@ -1,5 +1,6 @@
 import 'server-only';
 import { cacheLife, cacheTag } from 'next/cache';
+import { cleanComment, cleanName } from './review-input';
 import { isSpotId } from './spots';
 import { ownImageUrl, supabase } from './supabase';
 
@@ -52,19 +53,20 @@ function validRating(value: unknown): number | null {
   return Number.isFinite(rating) && rating >= 1 && rating <= 5 ? rating : null;
 }
 
-// The first version stored text of any length. Anything past these is cut on
-// read, so a few megabyte-sized rows can't bloat or break a page.
+// The first version stored text of any length, and rows can still be written
+// around the app. Text is cut to these lengths, then cleaned the way the form
+// cleans it, so no row can bloat a page or print something unreadable.
 const READ_MAX = { name: 64, comment: 2000 };
 
 function toReview(row: Record<string, unknown>): Review | null {
   const rating = validRating(row.rating);
   if (rating === null || !isSpotId(row.restaurant_id)) return null;
-  const name = typeof row.user_name === 'string' ? row.user_name.trim().slice(0, READ_MAX.name) : '';
+  const name = typeof row.user_name === 'string' ? cleanName(row.user_name.slice(0, READ_MAX.name)) : '';
   return {
     id: Number(row.id),
     spotId: row.restaurant_id,
     rating: Math.round(rating),
-    comment: typeof row.comment === 'string' ? row.comment.trim().slice(0, READ_MAX.comment) : '',
+    comment: typeof row.comment === 'string' ? cleanComment(row.comment.slice(0, READ_MAX.comment)) : '',
     name: name || 'Anonymous',
     imageUrl: ownImageUrl(row.image_url),
     createdAt: String(row.created_at),

@@ -3,7 +3,7 @@ import { OG, OgBarcode, ogFonts, OgStar } from '@/lib/og';
 import { getScoreboard } from '@/lib/reviews';
 import { SPOTS } from '@/lib/spots';
 
-export const alt = `CS Family Star — where are we eating today? ${SPOTS.length} food spots around FUE, rated by students.`;
+export const alt = `CS Family Star — where are we eating today? ${SPOTS.length} food spots around FUE. Students rate them 1 to 5.`;
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
@@ -15,7 +15,7 @@ export default async function Image() {
   const rows: [string, string, boolean][] = [
     ['SPOTS ON THE MENU', String(SPOTS.length), false],
     ['SPOTS RATED', count(rated), false],
-    ['OPEN TICKETS', count(SPOTS.length - rated), true],
+    ['NOT RATED YET', count(SPOTS.length - rated), false],
     ['REVIEWS POSTED', count(board.total), false],
   ];
 
@@ -37,7 +37,7 @@ export default async function Image() {
               {SPOTS.length} SPOTS AROUND FUE.
             </span>
             <span style={{ fontFamily: 'Display', fontSize: 104, lineHeight: 0.9, color: OG.hot }}>
-              RATED BY STUDENTS.
+              STUDENTS RATE THEM.
             </span>
           </div>
         </div>
@@ -69,7 +69,7 @@ export default async function Image() {
               <span style={{ fontFamily: 'Dot', fontSize: 52, lineHeight: 1, color: hot ? OG.red : OG.print }}>{value}</span>
             </div>
           ))}
-          <div style={{ display: 'flex', marginTop: 10 }}>
+          <div style={{ display: 'flex', marginTop: 10, overflow: 'hidden' }}>
             <OgBarcode seed={`totals-${board.total}`} height={48} />
           </div>
         </div>

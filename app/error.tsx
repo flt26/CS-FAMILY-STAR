@@ -10,7 +10,7 @@ export default function Error({ retry }: { error: unknown; retry: () => void }) 
       <p>
         Something broke while printing this page. It’s on us, not you.{' '}
         <span className="void__ar" lang="ar" dir="rtl">
-          حصلت مشكلة، جرب تاني
+          حصلت مشكلة، نجرب تاني؟
         </span>
       </p>
       <button className="key key--chalk" type="button" onClick={retry}>

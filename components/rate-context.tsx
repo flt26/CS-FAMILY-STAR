@@ -15,11 +15,16 @@ export function RateProvider({ children }: { children: ReactNode }) {
       <RateDialog
         request={request}
         onClose={() => {
+          const origin = request?.origin;
+          const link = `a[href="/spot/${request?.spot.id}"]`;
           setRequest(null);
           // The dialog hands focus back to the button that opened it. If a
-          // posted review re-rendered that button away, start from the page.
+          // posted review re-rendered that button away, go to the spot's link
+          // where the user was (its ticket or menu line), else to the page.
           requestAnimationFrame(() => {
-            if (document.activeElement === document.body) document.getElementById('main')?.focus();
+            if (document.activeElement !== document.body) return;
+            const place = origin?.isConnected ? origin : document.getElementById('menu-lines');
+            (place?.querySelector<HTMLElement>(link) ?? document.getElementById('main'))?.focus();
           });
         }}
       />
@@ -44,9 +49,9 @@ export function RateTrigger({
     <button
       type="button"
       className={className}
-      onClick={() => {
+      onClick={(event) => {
         const spot = getSpot(spotId);
-        if (spot) rate({ spot, open });
+        if (spot) rate({ spot, open, origin: event.currentTarget.closest('li') });
       }}
     >
       {children}

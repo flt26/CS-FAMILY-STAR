@@ -30,7 +30,13 @@ const FORMAT_MARKS = /(?![\u200C\u200D])\p{Cf}/gu;
 const CONTROLS_EXCEPT_NEWLINE = /[^\P{Cc}\n]/gu;
 // Letters that draw nothing: the Hangul fillers and the blank Braille cell.
 const BLANK_LETTERS = /[\u115F\u1160\u3164\uFFA0\u2800]/gu;
+// Combining marks stack on the letter before them. Real text needs a few
+// (Arabic shadda plus a vowel, Vietnamese tones); hundreds on one letter make
+// a single unbreakable character wider than a phone screen.
+const MARK_PILES = /(\p{M}{3})\p{M}+/gu;
 const VISIBLE = /[\p{L}\p{N}\p{S}]/gu;
+// A comment has to show something: letters, numbers, emoji or punctuation.
+const PRINTS = /[\p{L}\p{N}\p{S}\p{P}]/u;
 // Six or more digits in any script (٢٠٢٣٠٠٤٩ too), even split by spaces or dashes.
 const ID_LIKE = /\p{Nd}(?:[\s._-]*\p{Nd}){5,}/u;
 
@@ -42,21 +48,25 @@ export function cleanName(raw: string): string {
     .replace(CONTROLS_EXCEPT_NEWLINE, '')
     .replace(FORMAT_MARKS, '')
     .replace(BLANK_LETTERS, '')
+    .replace(MARK_PILES, '$1')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 export function cleanComment(raw: string): string {
-  return raw
+  const text = raw
     .replace(/\r\n?/g, '\n')
     .replace(/\t/g, ' ')
     .replace(CONTROLS_EXCEPT_NEWLINE, '')
     .replace(FORMAT_MARKS, '')
+    .replace(BLANK_LETTERS, '')
+    .replace(MARK_PILES, '$1')
     .split('\n')
     .map((line) => line.trimEnd())
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+  return PRINTS.test(text) ? text : '';
 }
 
 export function nameError(name: string): string | undefined {

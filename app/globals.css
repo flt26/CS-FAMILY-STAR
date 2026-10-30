@@ -11,6 +11,7 @@
   --color-ink-850: #1d1a17;
   --color-ink-800: #27231f;
   --color-ink-700: #3b3631;
+  --color-ink-600: #6b645a; /* field edges on ink, 3.1:1 */
   --color-chalk: #f3efe6; /* text on ink, 16:1 */
   --color-fog: #a9a296; /* secondary text on ink, 7.2:1 */
   --color-thermal: #f8f6f0; /* customer receipts, the menu */
@@ -469,7 +470,7 @@ button {
   height: 58px;
   padding: 0 14px 0 16px;
   background: var(--color-ink-950);
-  border: 1.5px solid var(--color-ink-700);
+  border: 1.5px solid var(--color-ink-600);
   border-radius: 4px;
   box-shadow: inset 0 2px 6px rgb(0 0 0 / 0.6);
 }
@@ -635,7 +636,7 @@ button {
   color: var(--color-chalk);
 }
 .sec-head .ar {
-  margin-inline-start: auto;
+  margin-left: auto;
   font-size: 18px;
   color: var(--color-fog);
 }
@@ -734,10 +735,10 @@ button {
   gap: 6px;
   height: 24px;
   padding: 0 8px;
-  background: var(--color-red);
+  background: var(--color-print);
   color: var(--color-thermal);
-  font: 600 11px/1 var(--font-mono);
-  letter-spacing: 0.1em;
+  font: 600 12px/1 var(--font-mono);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -1114,7 +1115,7 @@ button {
   overflow-wrap: anywhere;
 }
 .echo b {
-  color: var(--color-red-hot);
+  color: var(--color-fog);
   font-weight: 600;
 }
 .echo span {
@@ -1142,7 +1143,7 @@ button {
 }
 .menu__head .dot {
   font-size: 46px;
-  color: var(--color-red);
+  color: var(--color-print-2);
   line-height: 0.8;
 }
 .menu__meta {
@@ -1182,11 +1183,6 @@ button {
     background-color: var(--color-thermal-2);
   }
 }
-@media (max-width: 400px) {
-  .line__meta {
-    white-space: normal;
-  }
-}
 .line__main:focus-visible {
   outline-offset: -3px;
 }
@@ -1201,6 +1197,7 @@ button {
   min-width: 0;
 }
 .line__name {
+  min-width: 0;
   font-family: var(--font-display);
   font-stretch: 66%;
   font-weight: 750;
@@ -1217,9 +1214,20 @@ button {
   color: var(--color-print-2);
   white-space: nowrap;
 }
+/* On phones the branch gets a line of its own instead of running under the Rate key. */
+@media (max-width: 480px) {
+  .line__branch {
+    display: block;
+    margin-top: 2px;
+    white-space: normal;
+  }
+  .line__sep {
+    display: none;
+  }
+}
 .line__lead {
   flex: 1 1 auto;
-  min-width: 14px;
+  min-width: 0;
   height: 4px;
   margin: 0 2px 0 8px;
   background: radial-gradient(circle, var(--color-print-3) 1.05px, #0000 1.5px) 0 50% / 6px 4px repeat-x;
@@ -1241,9 +1249,14 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+@media (max-width: 400px) {
+  .line__meta {
+    white-space: normal;
+  }
+}
 .line__count {
   grid-column: 3;
-  font: 500 12px/1.3 var(--font-mono);
+  font: 500 12.5px/1.3 var(--font-mono);
   color: var(--color-print-2);
   text-align: right;
   white-space: nowrap;
@@ -1455,7 +1468,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--color-red);
+  color: var(--color-print);
 }
 .slip__flag svg {
   width: 11px;
@@ -1509,6 +1522,7 @@ button {
 .back {
   display: inline-flex;
   align-items: center;
+  justify-self: start;
   gap: 8px;
   min-height: 44px;
   color: var(--color-fog);
@@ -1568,6 +1582,9 @@ button {
   font-size: clamp(96px, 26vw, 148px);
   line-height: 0.76;
 }
+.order__total--offline .order__score {
+  color: var(--color-print-2);
+}
 .order__score small {
   font: 500 15px/1 var(--font-mono);
   color: var(--color-print-2);
@@ -1606,8 +1623,7 @@ button {
   height: 100%;
   background: repeating-linear-gradient(90deg, var(--color-print) 0 8px, #0000 8px 10px);
 }
-/* Red means "nope" everywhere, so only the 2 and 1 rows print in red. */
-.histogram__row:nth-child(4) .histogram__bar span,
+/* Red means "nope" everywhere, so only the 1-star row prints in red. */
 .histogram__row:nth-child(5) .histogram__bar span {
   background: repeating-linear-gradient(90deg, var(--color-red) 0 8px, #0000 8px 10px);
 }
@@ -1620,7 +1636,7 @@ button {
   color: var(--color-print);
 }
 .histogram__word {
-  font: 500 11.5px/1 var(--font-mono);
+  font: 500 12px/1 var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -1710,6 +1726,8 @@ button {
   margin: auto;
   padding: 12px 8px 16px;
   overflow-y: auto;
+  /* Focus and scrollIntoView stop above the sticky Post bar (its height is set from the bar). */
+  scroll-padding-bottom: calc(var(--send-h, 0px) + 12px);
   overscroll-behavior: contain;
   border: 0;
   background: none;
@@ -1782,8 +1800,8 @@ button {
   gap: 10px;
   margin-top: 18px;
   padding: 12px 14px;
-  border: 1.5px dashed var(--color-red);
-  color: var(--color-red);
+  border: 1.5px dashed var(--color-print-3);
+  color: var(--color-print);
   font: 500 13px/1.5 var(--font-mono);
 }
 .sheet__first svg {
@@ -1811,7 +1829,7 @@ button {
 }
 .step__head b {
   margin-right: 8px;
-  color: var(--color-red);
+  color: var(--color-print);
   font-weight: 600;
 }
 .step__head > span:last-child {
@@ -1882,8 +1900,8 @@ legend.step__head + * {
   line-height: 0.8;
 }
 .scale__word {
-  font: 600 11px/1 var(--font-mono);
-  letter-spacing: 0.06em;
+  font: 600 12px/1 var(--font-mono);
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 .scale label:hover .scale__key {
@@ -1912,7 +1930,7 @@ legend.step__head + * {
 }
 .scale__score {
   font-size: 36px;
-  color: var(--color-red);
+  color: var(--color-print);
 }
 .scale__readout .cond {
   font-size: 30px;
@@ -1932,7 +1950,7 @@ legend.step__head + * {
   padding: 0 2px;
   background: repeating-linear-gradient(
     transparent 0 calc(2.2em - 1.5px),
-    var(--color-rule) calc(2.2em - 1.5px) 2.2em
+    var(--color-print-3) calc(2.2em - 1.5px) 2.2em
   );
   background-attachment: local;
   color: var(--color-print);
@@ -1947,7 +1965,7 @@ legend.step__head + * {
 .lined:focus {
   background-image: repeating-linear-gradient(
     transparent 0 calc(2.2em - 1.5px),
-    var(--color-print-3) calc(2.2em - 1.5px) 2.2em
+    var(--color-print-2) calc(2.2em - 1.5px) 2.2em
   );
 }
 .lined::placeholder {
@@ -2048,7 +2066,7 @@ legend.step__head + * {
   top: 50%;
   z-index: 1;
   transform: translateY(-50%);
-  color: var(--color-red);
+  color: var(--color-print-2);
   font: 600 18px/1 var(--font-mono);
   pointer-events: none;
 }
@@ -2081,15 +2099,24 @@ legend.step__head + * {
   margin-left: 8px;
   background: radial-gradient(circle, var(--color-print-3) 1.05px, #0000 1.5px) 0 50% / 6px 4px repeat-x;
 }
-/* The Print key stays in reach while the sheet scrolls. */
+/* The Post key stays in reach while the sheet scrolls, on screens tall enough to spare the room. */
 .sheet__send {
   position: sticky;
   bottom: 0;
   z-index: 2;
-  margin: 26px -18px -20px;
+  margin: 26px -18px 0;
   padding: 14px 18px 14px;
   background: var(--color-thermal) var(--grain);
   box-shadow: 0 -14px 14px -10px rgb(27 24 21 / 0.22);
+}
+@media (max-height: 520px) {
+  .sheet__send {
+    position: static;
+    box-shadow: none;
+  }
+  .printer {
+    scroll-padding-bottom: 12px;
+  }
 }
 .sheet__missing {
   margin-bottom: 10px;
@@ -2123,7 +2150,7 @@ legend.step__head + * {
   font-size: 20px;
 }
 .sheet__fine {
-  margin-top: 10px;
+  margin-top: 4px;
   text-align: center;
   font: 400 12px/1.5 var(--font-mono);
   color: var(--color-print-2);
@@ -2159,8 +2186,8 @@ legend.step__head + * {
   border-radius: 4px;
   background: var(--color-ink-950);
   font: 400 12.5px/1.6 var(--font-mono);
-  white-space: pre;
-  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .heard .slot {
   margin: 24px -6px 0;
@@ -2215,7 +2242,7 @@ legend.step__head + * {
   animation: stamp 0.35s 0.9s cubic-bezier(0.3, 1.6, 0.5, 1) both;
 }
 .stamp small {
-  font: 600 11px/1.3 var(--font-mono);
+  font: 600 12px/1.3 var(--font-mono);
   letter-spacing: 0.14em;
 }
 .leader {
@@ -2352,7 +2379,7 @@ legend.step__head + * {
   line-height: 0.9;
 }
 .stub__names span {
-  color: var(--color-red);
+  color: var(--color-print-2);
 }
 .stub p.label {
   color: var(--color-print-2);
@@ -2451,6 +2478,14 @@ legend.step__head + * {
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
+    /* A faint glow marks an edge with more filters past it; the covers
+       scroll with the list and hide it at either end. */
+    background:
+      linear-gradient(var(--color-ink-850) 30%, #0000) top / 100% 48px no-repeat local,
+      linear-gradient(#0000, var(--color-ink-850) 70%) bottom / 100% 48px no-repeat local,
+      radial-gradient(farthest-side at 50% 0, rgb(243 239 230 / 0.18), #0000) top / 100% 18px no-repeat scroll,
+      radial-gradient(farthest-side at 50% 100%, rgb(243 239 230 / 0.18), #0000) bottom / 100% 18px no-repeat scroll,
+      var(--color-ink-850);
   }
   .pad__toggle {
     display: none;
@@ -2556,7 +2591,9 @@ legend.step__head + * {
     padding: 26px 28px 24px;
   }
   .sheet__send {
-    margin: 26px -28px -24px;
+    /* The dialog's 16px bottom padding would leave a gap under a stuck bar. */
+    bottom: -16px;
+    margin: 26px -28px 0;
     padding: 16px 28px 16px;
   }
   .heard {
@@ -2743,14 +2780,13 @@ legend.step__head + * {
 }
 /* Very wide screens: keep the menu a readable width instead of 800px of dots. */
 @media (min-width: 1600px) {
-  .board {
-    grid-template-columns: 340px minmax(0, 920px) 380px;
-    justify-content: center;
+  /* Every section is padded by the gutter, so one centred 1640px column
+     keeps the masthead, hook, rail, menu and footer on the same edges. */
+  :root {
+    --gutter: max(48px, calc((100% - 1640px) / 2));
   }
-  .hook,
-  .rail__tickets {
-    max-width: 1640px;
-    margin-inline: auto;
+  .board {
+    grid-template-columns: 340px minmax(0, 1fr) 380px;
   }
 }
 
@@ -2804,10 +2840,26 @@ html:not([data-printed]) .totals__paper {
   .scale__key {
     border: 1px solid ButtonText;
   }
+  /* Checked fills with Highlight, so the outline stays free for focus. */
   .pick input:checked + .pick__face,
   .scale input:checked + .scale__key {
-    outline: 3px solid Highlight;
-    outline-offset: -3px;
+    forced-color-adjust: none;
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+  .pick input:checked + .pick__face *,
+  .scale input:checked + .scale__key * {
+    color: HighlightText;
+  }
+  .pick input:focus-visible + .pick__face,
+  .scale input:focus-visible + .scale__key {
+    outline: 3px solid CanvasText;
+    outline-offset: 3px;
+  }
+  /* The backplate behind the tight Arabic line would cover the English one above it. */
+  .hook__ar {
+    line-height: 1.15;
   }
   .zone input:checked ~ .zone__radio::after {
     forced-color-adjust: none;

@@ -7,6 +7,7 @@ import { pickStandouts, type Ticket } from '@/lib/standouts';
 import { AREAS, branchOf, CRAVINGS, getSpot, SPOTS } from '@/lib/spots';
 import { PickForMe, Prompt } from './hook-controls';
 import { Asterisk, orderNo } from './marks';
+import { RailTrack } from './rail-track';
 import { RateTrigger } from './rate-context';
 import { Slip, tiltFor } from './slip';
 import { TimeAgo } from './time-ago';
@@ -14,6 +15,7 @@ import { TimeAgo } from './time-ago';
 export function Hook({ board }: { board: Scoreboard }) {
   const last = board.latest;
   const lastSpot = last && getSpot(last.spotId);
+  const lastBranch = lastSpot && branchOf(lastSpot);
 
   return (
     <section className="hook" aria-labelledby="hook-title">
@@ -27,7 +29,7 @@ export function Hook({ board }: { board: Scoreboard }) {
           </span>
         </h1>
         <p className="hook__lede">
-          {SPOTS.length} food spots around FUE, rated 1 to 5 by the students who eat there.{' '}
+          {SPOTS.length} food spots around FUE. Students rate them 1&nbsp;to&nbsp;5.{' '}
           {board.ok
             ? 'Search them, filter them, or let us pick.'
             : 'Scores are offline for a moment, but the whole menu is still here.'}
@@ -37,9 +39,10 @@ export function Hook({ board }: { board: Scoreboard }) {
           <PickForMe />
           {last && lastSpot && (
             <p className="lastprint label">
-              Last printed <TimeAgo iso={last.createdAt} /> ·{' '}
+              Last review <TimeAgo iso={last.createdAt} /> ·{' '}
               <Link className="link" href={`/spot/${lastSpot.id}`}>
-                {lastSpot.brand}, {last.rating}/5
+                {lastSpot.brand}
+                {lastBranch && ` · ${lastBranch}`}, {last.rating}/5
               </Link>
             </p>
           )}
@@ -66,7 +69,7 @@ function TopRightNow({ board }: { board: Scoreboard }) {
             Top right now
           </h2>
           <p className="label">
-            {board.latest ? `Last review ${formatStamp(board.latest.createdAt)}` : 'Fresh roll'} · Terminal 90
+            {board.latest ? formatStamp(board.latest.createdAt) : 'Fresh roll'} · Terminal 90
           </p>
         </header>
         <div className="rule-dash" />
@@ -82,7 +85,12 @@ function TopRightNow({ board }: { board: Scoreboard }) {
                     <span className="line__title">
                       <span className="line__name">
                         {spot.brand}
-                        {branch && <span className="line__branch"> · {branch}</span>}
+                        {branch && (
+                          <span className="line__branch">
+                            <span className="line__sep"> · </span>
+                            {branch}
+                          </span>
+                        )}
                       </span>
                       <span className="line__lead" aria-hidden="true" />
                     </span>
@@ -109,7 +117,7 @@ function TopRightNow({ board }: { board: Scoreboard }) {
           {board.ok && (
             <>
               {' '}
-              · {rated.length} rated · <span className="red">{SPOTS.length - rated.length} open</span> ·{' '}
+              · {rated.length} rated · {SPOTS.length - rated.length} unrated ·{' '}
               {plural(board.total, 'review')}
             </>
           )}
@@ -127,7 +135,7 @@ const TAGS: Record<Ticket['kind'], { label: string; tone: string }> = {
   most: { label: 'Most reviewed', tone: 'tag tag--ink' },
   campus: { label: 'Between lectures', tone: 'tag tag--ink' },
   fresh: { label: 'Fresh print', tone: 'tag tag--ink' },
-  open: { label: 'Open ticket', tone: 'tag tag--open' },
+  open: { label: 'No reviews yet', tone: 'tag tag--open' },
   runner: { label: 'Runner-up', tone: 'tag tag--ink' },
 };
 const TILTS = [-1.1, 0.8, -0.5, 1.2, -0.9];
@@ -150,13 +158,13 @@ export function Rail({ board, recent }: { board: Scoreboard; recent: Review[] })
       </header>
       <div className="rail__track">
         <div className="rail__bar" aria-hidden="true" />
-        <ol className="rail__tickets">
+        <RailTrack>
           {tickets.map((ticket, index) => (
             <li key={ticket.spot.id} style={{ '--tilt': `${TILTS[index]}deg` } as CSSProperties}>
               <TicketCard ticket={ticket} rank={rankOf(ticket.stats, board)} of={ratedCount} />
             </li>
           ))}
-        </ol>
+        </RailTrack>
       </div>
     </section>
   );
@@ -202,16 +210,17 @@ function TicketCard({ ticket, rank, of }: { ticket: Ticket; rank: number | null;
             Be the first<span className="sr-only"> to rate {spot.brand}</span>
           </span>
           <span className="ar" lang="ar" dir="rtl">
-            خليك الأول
+            يلا أول تقييم
           </span>
         </RateTrigger>
-        <p className="ticket__note">No reviews yet. Rate it first and your name goes on its ticket.</p>
+        <p className="ticket__note">Rate it first and your name goes on its ticket.</p>
       </article>
     );
   }
 
   const filled = Math.round(stats.average);
-  const [one, two] = stats.histogram;
+  // "Nope" is the 1-star verdict; a 2 is "Meh", not a nope.
+  const [nope] = stats.histogram;
   return (
     <article className="ticket paper torn-b">
       <div className="ticket__top">
@@ -242,7 +251,7 @@ function TicketCard({ ticket, rank, of }: { ticket: Ticket; rank: number | null;
           <small>/5</small>
         </span>
         <span className="ticket__diff">
-          <span>{one + two > 0 && <b className="minus">{one + two} nope</b>}</span>
+          <span>{nope > 0 && <b className="minus">{nope} nope</b>}</span>
           <span className="blocks" aria-hidden="true">
             {[1, 2, 3, 4, 5].map((block) => (
               <i key={block} className={block <= filled ? undefined : 'n'} />

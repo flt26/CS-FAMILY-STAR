@@ -26,6 +26,8 @@ const FIELD_TARGETS: [ReviewField, string][] = [
   ['name', '#rate-name'],
 ];
 
+const LIST = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' });
+
 const STEP_NAMES: Record<ReviewField, string> = {
   spot: 'the spot',
   rating: '01 (rating)',
@@ -34,16 +36,36 @@ const STEP_NAMES: Record<ReviewField, string> = {
   name: '04 (nickname)',
 };
 
-/** After a refused submit, put the cursor where the first problem is. */
+/** After a refused submit, put the cursor where the first problem is, in view. */
 function focusFirstProblem(form: HTMLFormElement | null, problems: FieldErrors) {
   const target = FIELD_TARGETS.find(([field]) => problems[field]);
-  if (target) form?.querySelector<HTMLElement>(target[1])?.focus();
+  const field = target && form?.querySelector<HTMLElement>(target[1]);
+  if (!field) return;
+  field.focus({ preventScroll: true });
+  // The whole step, so its label and error show too. Focus alone won't
+  // scroll a field that only sits behind the Post bar.
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  (field.closest('.step') ?? field).scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+}
+
+/** Keeps the dialog's scroll padding as tall as the sticky Post bar, so a focused field never sits behind it. */
+function trackSendBar(send: HTMLDivElement | null) {
+  const dialog = send?.closest('dialog');
+  if (!send || !dialog) return;
+  const observer = new ResizeObserver(() => dialog.style.setProperty('--send-h', `${send.offsetHeight}px`));
+  observer.observe(send);
+  return () => {
+    observer.disconnect();
+    dialog.style.removeProperty('--send-h');
+  };
 }
 
 export interface RateRequest {
   spot: Spot;
   /** True when the spot has no reviews yet, so this one is its first. */
   open: boolean;
+  /** The list item the request came from, for focus to return to if its button is gone. */
+  origin?: Element | null;
 }
 
 /** Opens whenever `request` is set; calls onClose once the dialog has closed. */
@@ -120,7 +142,13 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
   const formRef = useRef<HTMLFormElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const errors: FieldErrors = { ...(state.status === 'error' ? state.fields : {}), ...localErrors };
+  // "Still shrinking" is only true while it is.
+  const { photo: shrinking, ...otherLocal } = localErrors;
+  const errors: FieldErrors = {
+    ...(state.status === 'error' ? state.fields : {}),
+    ...otherLocal,
+    ...(shrinking && photo.status === 'working' ? { photo: shrinking } : {}),
+  };
   const missing = FIELD_TARGETS.filter(([field]) => errors[field]).map(([field]) => STEP_NAMES[field]);
 
   useEffect(() => {
@@ -260,7 +288,7 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
             {comment.length} / {LIMITS.comment}
           </span>
           <span lang="ar" dir="rtl">
-            طلبت إيه؟ وكان عامل إزاي؟
+            الطلب كان إيه؟ وكان عامل إزاي؟
           </span>
         </p>
         {errors.comment && (
@@ -285,7 +313,10 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
               name="photo"
               accept="image/*"
               aria-describedby={errors.photo ? 'rate-photo-error' : undefined}
-              onChange={(event) => photo.pick(event.target.files?.[0])}
+              onChange={(event) => {
+                photo.pick(event.target.files?.[0]);
+                setLocalErrors((current) => ({ ...current, photo: undefined }));
+              }}
             />
             <span className="photo__face">
               <span className="photo__icon">
@@ -295,7 +326,7 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
                 <span className="cond photo__title">
                   {photo.status === 'working' ? 'Shrinking…' : photo.preview ? 'Change photo' : 'Add a photo'}
                 </span>
-                <span className="photo__note">Goes on your receipt. Tap it there to see it full size.</span>
+                <span className="photo__note">Shows on your review. Tap it there to see it full size.</span>
               </span>
             </span>
           </label>
@@ -310,8 +341,11 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
                 className="text-button"
                 onClick={() => {
                   photo.clear();
+                  setLocalErrors((current) => ({ ...current, photo: undefined }));
                   // Otherwise picking the same file again fires no change event.
                   if (fileRef.current) fileRef.current.value = '';
+                  // This button is about to go; keep focus in the photo step.
+                  fileRef.current?.focus();
                 }}
               >
                 Remove photo
@@ -371,7 +405,7 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
           </button>
         </div>
         <p className="step__hint step__hint--stack" id="rate-name-hint">
-          <span>No student ID, no login. Any name you like — it’s what prints on your receipt.</span>
+          <span>No student ID, no login. Any name you like — it’s the name on your review.</span>
           <span lang="ar" dir="rtl">
             أي اسم — مش لازم اسمك الحقيقي
           </span>
@@ -390,8 +424,8 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
         </label>
       </div>
 
-      <div className="sheet__send">
-        {missing.length > 0 && <p className="sheet__missing">Check {missing.join(' and ')} above.</p>}
+      <div className="sheet__send" ref={trackSendBar}>
+        {missing.length > 0 && <p className="sheet__missing">Check {LIST.format(missing)} above.</p>}
         {state.status === 'error' && !state.fields && (
           <p className="sheet__error" role="alert">
             {state.message}
@@ -400,14 +434,14 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
         <button type="submit" className="key key--red sheet__submit" aria-disabled={pending}>
           <span className="sheet__submit-label">
             <Asterisk />
-            {pending ? 'Printing…' : 'Post my review'}
+            {pending ? 'Posting…' : 'Post my review'}
           </span>
           <span className="ar" lang="ar" dir="rtl">
-            انشر
+            يلا ننشر
           </span>
         </button>
-        <p className="sheet__fine">Reviews are public and can’t be edited or deleted. Keep it honest, keep it kind.</p>
       </div>
+      <p className="sheet__fine">Reviews are public and can’t be edited or deleted. Keep it honest, keep it kind.</p>
     </form>
   );
 }
@@ -443,7 +477,7 @@ function Printed({
   return (
     <div className="heard" tabIndex={-1} ref={heardRef}>
       <div className="sheet__top">
-        <p className="label muted">Success</p>
+        <p className="label muted">Review posted</p>
         <button type="button" className="sheet__close sheet__close--ink" onClick={onDone} aria-label="Close">
           ×
         </button>

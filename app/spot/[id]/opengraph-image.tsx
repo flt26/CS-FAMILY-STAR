@@ -25,12 +25,21 @@ export default async function Image({ params }: { params: Promise<{ id: string }
   const name = spot.brand.toUpperCase();
   const where = `${AREAS[spot.area].en} · ${CRAVINGS[spot.craving].en}`.toUpperCase();
   const score = stats ? stats.average.toFixed(1) : '?';
-  const footnote = stats
-    ? `${plural(stats.count, 'REVIEW', 'REVIEWS')} · ${VERDICTS[Math.round(stats.average)].cs.toUpperCase()}`
+  const verdict = stats ? VERDICTS[Math.round(stats.average)] : null;
+  const footnote = stats && verdict
+    ? `${plural(stats.count, 'REVIEW', 'REVIEWS')} · ${verdict.word.toUpperCase()}`
     : board.ok
-      ? 'NO REVIEWS YET · BE THE FIRST TO RATE IT'
-      : 'RATED BY FUE STUDENTS';
+      ? 'RATE IT FIRST'
+      : 'BACK SOON';
+  // Red is for "nope" and for the invitation to rate, not for a good score.
+  const footnoteColor = (verdict && verdict.word === 'Nope') || (!stats && board.ok) ? OG.red : OG.print2;
   const order = `ORDER #${orderNo(spot.id).toUpperCase()}`;
+  // Without scores we can't tell a rated spot from an open one, so say so.
+  const tag = stats
+    ? { text: 'RATED ON CS FAMILY STAR', color: OG.thermal, background: OG.print, border: 'none' }
+    : board.ok
+      ? { text: 'NO REVIEWS YET', color: OG.red, background: 'transparent', border: `2px dashed ${OG.red}` }
+      : { text: 'SCORES OFFLINE', color: OG.print2, background: 'transparent', border: `2px dashed ${OG.print2}` };
 
   return new ImageResponse(
     (
@@ -51,24 +60,24 @@ export default async function Image({ params }: { params: Promise<{ id: string }
                 fontFamily: 'Mono',
                 fontSize: 18,
                 letterSpacing: 2,
-                color: stats ? OG.thermal : OG.red,
-                background: stats ? OG.print : 'transparent',
-                border: stats ? 'none' : `2px dashed ${OG.red}`,
+                color: tag.color,
+                background: tag.background,
+                border: tag.border,
                 padding: '6px 12px',
               }}
             >
-              {stats ? 'RATED BY FUE STUDENTS' : 'OPEN TICKET'}
+              {tag.text}
             </span>
             <span style={{ fontFamily: 'Mono', fontSize: 18, letterSpacing: 2, color: OG.print2 }}>{order}</span>
           </div>
-          <span style={{ fontFamily: 'Display', fontSize: name.length > 14 ? 92 : 120, lineHeight: 0.9, color: OG.print, marginTop: 26 }}>
+          <span style={{ fontFamily: 'Display', fontSize: name.length >= 13 ? 92 : 120, lineHeight: 0.9, color: OG.print, marginTop: 26 }}>
             {name}
           </span>
           <span style={{ fontFamily: 'Mono', fontSize: 22, letterSpacing: 3, color: OG.print2, marginTop: 14 }}>{where}</span>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, marginTop: 'auto' }}>
             <span style={{ fontFamily: 'Dot', fontSize: 190, lineHeight: 0.8, color: OG.print }}>{score}</span>
             <span style={{ fontFamily: 'Mono', fontSize: 30, color: OG.print2, paddingBottom: 10 }}>/5</span>
-            <span style={{ fontFamily: 'Mono', fontSize: 20, letterSpacing: 2, color: OG.red, paddingBottom: 14, marginLeft: 'auto' }}>
+            <span style={{ fontFamily: 'Mono', fontSize: 20, letterSpacing: 2, color: footnoteColor, paddingBottom: 14, marginLeft: 'auto' }}>
               {footnote}
             </span>
           </div>

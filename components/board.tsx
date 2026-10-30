@@ -30,7 +30,7 @@ const SORTS: { id: SortKey; label: string }[] = [
   { id: 'az', label: 'A–Z' },
 ];
 const SORT_NOTES: Record<SortKey, string> = {
-  top: 'best first · a few reviews count less',
+  top: 'best first · spots with few reviews rank lower',
   most: 'most reviews first',
   az: 'A to Z',
 };
@@ -215,11 +215,11 @@ export function Menu({ ok }: { ok: boolean }) {
           <p className="menu__meta label">
             {plural(rows.length, 'spot')} · {SORT_NOTES[sort]}
           </p>
-          {!ok && <p className="notice">Scores are offline for a moment. The menu still works; ratings will be back.</p>}
+          {!ok && <p className="notice">Scores are offline for a moment. The menu still works; scores will be back soon.</p>}
         </header>
 
         {rows.length === 0 ? (
-          <div className="nothing">
+          <div className="nothing" id="menu-nothing">
             <p className="cond">Nothing on the menu</p>
             <p>
               {query.trim() ? (
@@ -227,7 +227,7 @@ export function Menu({ ok }: { ok: boolean }) {
                   Nothing matches “<span dir="auto">{query.trim()}</span>”. Try a shorter word
                 </>
               ) : (
-                'No spot matches that. Try another zone'
+                'No spot matches that. Try another area or food type'
               )}
               {filtered ? ', or clear the filters.' : '.'}
             </p>
@@ -256,7 +256,7 @@ export function Menu({ ok }: { ok: boolean }) {
                 </div>
                 <p>No reviews yet. Rate one first and your name goes on its ticket as the first reviewer.</p>
                 <p className="ar" lang="ar" dir="rtl">
-                  محدش قيّمهم لسه — خليك إنت الأول
+                  محدش قيّمهم لسه — أول تقييم ممكن يبقى بتاعك
                 </p>
               </li>
             )}
@@ -310,7 +310,12 @@ function Line({
     <span className="line__title">
       <span className="line__name">
         {spot.brand}
-        {branch && <span className="line__branch"> · {branch}</span>}
+        {branch && (
+          <span className="line__branch">
+            <span className="line__sep"> · </span>
+            {branch}
+          </span>
+        )}
       </span>
       <span className="line__lead" aria-hidden="true" />
     </span>
@@ -335,7 +340,8 @@ function Line({
     );
   }
 
-  const nope = stats.histogram[0] + stats.histogram[1];
+  // "Nope" is the 1-star verdict; a 2 is "Meh", not a nope.
+  const nope = stats.histogram[0];
   // One or two verdicts are a hint, not a reputation; the score prints lighter.
   const thin = stats.count < 3;
   return (

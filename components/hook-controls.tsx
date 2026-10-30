@@ -10,7 +10,9 @@ import type { Row } from './use-explorer';
 
 function jumpToMenu() {
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  document.getElementById('menu-lines')?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  // The results, or the "nothing on the menu" note when there are none.
+  const target = document.getElementById('menu-lines') ?? document.getElementById('menu-nothing');
+  target?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
 }
 
 /** The terminal-style search. Filters the menu below as you type. */
@@ -21,9 +23,13 @@ export function Prompt() {
   // "/" jumps to the search, like every dev tool.
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
-      // Only from "nowhere": never steal a key meant for a focused control.
-      if (document.activeElement && document.activeElement !== document.body) return;
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
+      // Never steal a "/" typed into a field, or reach behind an open dialog.
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || target.matches('input, textarea, select'))) {
+        return;
+      }
+      if (document.querySelector('dialog[open]')) return;
       event.preventDefault();
       inputRef.current?.focus();
     }
@@ -42,7 +48,7 @@ export function Prompt() {
       }}
     >
       <label className="sr-only" htmlFor="q">
-        Search spots, areas or cravings
+        Search spots, areas or food types
       </label>
       <span className="prompt__sigil" aria-hidden="true">
         &gt;
@@ -63,7 +69,15 @@ export function Prompt() {
         <i className="caret" />
       </span>
       {query ? (
-        <button type="button" className="prompt__clear" onClick={() => setQuery('')}>
+        <button
+          type="button"
+          className="prompt__clear"
+          onClick={() => {
+            setQuery('');
+            // The button goes away with the query; the search keeps focus.
+            inputRef.current?.focus();
+          }}
+        >
           Clear
         </button>
       ) : (
@@ -91,11 +105,15 @@ function pick(rows: Row[], previous: Row | null): Row | undefined {
 
 /** "Where are we eating today?" — answered by the app, within the active filters. */
 export function PickForMe() {
-  const { rows, filtered } = useExplorerState();
-  const [picked, setPicked] = useState<Row | null>(null);
+  const { rows, filtered, query, department, area } = useExplorerState();
+  // A pick belongs to the filters it was made under; change them and it goes.
+  const filters = [query.trim(), department, area].join('\n');
+  const [pickedFor, setPickedFor] = useState<{ row: Row; filters: string } | null>(null);
+  const picked = pickedFor?.filters === filters ? pickedFor.row : null;
 
   function roll() {
-    setPicked(pick(rows, picked) ?? null);
+    const row = pick(rows, picked);
+    setPickedFor(row ? { row, filters } : null);
   }
 
   return (
@@ -104,7 +122,7 @@ export function PickForMe() {
         <DotGlyph name="dice" />
         <span>{picked ? 'Again' : 'Pick for me'}</span>
         <span className="ar" lang="ar" dir="rtl">
-          {picked ? 'غيرها' : 'اختارلي إنت'}
+          {picked ? 'واحد تاني' : 'إحنا نختارلك'}
         </span>
       </button>
       <p className="pick-for-me__out" aria-live="polite">

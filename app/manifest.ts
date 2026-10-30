@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'CS Family Star',
     short_name: 'CS Star',
-    description: `Where are we eating today? ${SPOTS.length} food spots around FUE, rated by students.`,
+    description: `Where are we eating today? ${SPOTS.length} food spots around FUE. Students rate them 1 to 5.`,
     start_url: '/',
     display: 'standalone',
     background_color: '#161412',
