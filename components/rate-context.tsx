@@ -12,7 +12,17 @@ export function RateProvider({ children }: { children: ReactNode }) {
   return (
     <RateContext value={setRequest}>
       {children}
-      <RateDialog request={request} onClose={() => setRequest(null)} />
+      <RateDialog
+        request={request}
+        onClose={() => {
+          setRequest(null);
+          // The dialog hands focus back to the button that opened it. If a
+          // posted review re-rendered that button away, start from the page.
+          requestAnimationFrame(() => {
+            if (document.activeElement === document.body) document.getElementById('main')?.focus();
+          });
+        }}
+      />
     </RateContext>
   );
 }

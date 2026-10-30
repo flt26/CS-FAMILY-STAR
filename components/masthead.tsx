@@ -14,13 +14,13 @@ export function Masthead() {
         <Link className="only-wide" href="/#rail">
           On the rail
         </Link>
-        <Link className="only-wide" href="/#menu">
-          The menu
-        </Link>
+        <Link href="/#menu-lines">The menu</Link>
         <Link className="only-wide" href="/#feed">
           Just printed
         </Link>
-        <Link href="#about">About</Link>
+        <Link className="only-wide" href="#about">
+          About
+        </Link>
       </nav>
     </header>
   );

@@ -1,4 +1,4 @@
-import { AREAS, CRAVINGS, type Spot } from './spots';
+import { AREAS, CRAVINGS, type CravingId, type Spot } from './spots';
 
 // Fold case, Latin accents, apostrophes ("McDonald's" = "mcdonalds"),
 // Arabic-Indic digits and the Arabic letter variants people type
@@ -65,6 +65,22 @@ const ARABIC_ALIASES: Record<string, string> = {
   'Koshary El Tahrir': 'كشري التحرير',
 };
 
+// Everyday words for each craving, in both scripts, so "مكرونة" or "cafe"
+// finds something. Search-only, like the names above.
+const CRAVING_ALIASES: Partial<Record<CravingId, string>> = {
+  coffee: 'cafe café coffee shop كافيه كوفي قهوة',
+  bakery: 'bread croissant مخبز بيكري عيش',
+  sweets: 'dessert desserts ice cream donut donuts حلو حلويات ايس كريم دونتس',
+  burgers: 'burger',
+  chicken: 'chicken broasted wings بروستد',
+  sandwiches: 'sandwich shawarma شاورما سندوتش',
+  italian: 'pasta macaroni مكرونة',
+  egyptian: 'koshari kushari koshary foul ful falafel taameya فول طعمية كشري',
+  asian: 'sushi japanese chinese ياباني صيني',
+  grill: 'kebab kofta grill كباب كفتة',
+  dining: 'restaurant dinner مطعم عشا قعدة',
+};
+
 const HAYSTACKS = new Map<string, string>();
 
 function haystack(spot: Spot): string {
@@ -73,7 +89,16 @@ function haystack(spot: Spot): string {
     const area = AREAS[spot.area];
     const craving = CRAVINGS[spot.craving];
     text = normalize(
-      [spot.name, spot.vicinity, ARABIC_ALIASES[spot.brand] ?? '', area.en, area.ar, craving.en, craving.ar].join(' '),
+      [
+        spot.name,
+        spot.vicinity,
+        ARABIC_ALIASES[spot.brand] ?? '',
+        area.en,
+        area.ar,
+        craving.en,
+        craving.ar,
+        CRAVING_ALIASES[spot.craving] ?? '',
+      ].join(' '),
     );
     HAYSTACKS.set(spot.id, text);
   }

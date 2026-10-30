@@ -3,20 +3,21 @@ import { OG, OgBarcode, ogFonts, OgStar } from '@/lib/og';
 import { getScoreboard } from '@/lib/reviews';
 import { SPOTS } from '@/lib/spots';
 
-export const alt = 'CS Family Star — where are we eating today? 100 food spots around FUE, rated by students.';
+export const alt = `CS Family Star — where are we eating today? ${SPOTS.length} food spots around FUE, rated by students.`;
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
 export default async function Image() {
   const board = await getScoreboard();
   const rated = SPOTS.filter((spot) => board.stats[spot.id]).length;
+  // During an outage the counts would all read zero; print dashes instead.
+  const count = (value: number) => (board.ok ? String(value) : '--');
   const rows: [string, string, boolean][] = [
     ['SPOTS ON THE MENU', String(SPOTS.length), false],
-    ['RATED BY THE FAMILY', String(rated), false],
-    ['OPEN TICKETS', String(SPOTS.length - rated), true],
-    ['RECEIPTS PRINTED', String(board.total), false],
+    ['SPOTS RATED', count(rated), false],
+    ['OPEN TICKETS', count(SPOTS.length - rated), true],
+    ['REVIEWS POSTED', count(board.total), false],
   ];
-  const text = `CS FAMILY STAR Q. WHERE ARE WE EATING TODAY? 100 SPOTS AROUND FUE. RATED BY THE CS FAMILY. DAILY TOTALS ${rows.flat().join(' ')} 0123456789`;
 
   return new ImageResponse(
     (
@@ -33,10 +34,10 @@ export default async function Image() {
               <span style={{ color: OG.hot }}>Q.</span>&nbsp;WHERE ARE WE EATING TODAY?
             </span>
             <span style={{ fontFamily: 'Display', fontSize: 104, lineHeight: 0.9, color: OG.chalk }}>
-              100 SPOTS AROUND FUE.
+              {SPOTS.length} SPOTS AROUND FUE.
             </span>
             <span style={{ fontFamily: 'Display', fontSize: 104, lineHeight: 0.9, color: OG.hot }}>
-              RATED BY THE CS FAMILY.
+              RATED BY STUDENTS.
             </span>
           </div>
         </div>
@@ -52,7 +53,7 @@ export default async function Image() {
             boxShadow: '0 24px 40px rgba(0,0,0,.45)',
           }}
         >
-          <span style={{ fontFamily: 'Display', fontSize: 38, color: OG.print }}>DAILY TOTALS</span>
+          <span style={{ fontFamily: 'Display', fontSize: 38, color: OG.print }}>TOTALS SO FAR</span>
           {rows.map(([label, value, hot]) => (
             <div
               key={label}
@@ -74,6 +75,6 @@ export default async function Image() {
         </div>
       </div>
     ),
-    { ...size, fonts: await ogFonts(text) },
+    { ...size, fonts: await ogFonts() },
   );
 }

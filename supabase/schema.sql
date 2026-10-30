@@ -14,6 +14,8 @@ create table if not exists public.reviews (
 create index if not exists reviews_restaurant_created_idx
   on public.reviews (restaurant_id, created_at desc);
 
+-- Photos are uploaded by the server. Storage has no anonymous upload policy,
+-- so on a fresh project set SUPABASE_SERVICE_ROLE_KEY or photo uploads fail.
 insert into storage.buckets (id, name, public)
 values ('review-images', 'review-images', true)
 on conflict (id) do nothing;

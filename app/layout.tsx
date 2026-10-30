@@ -4,6 +4,7 @@ import { Footer } from '@/components/footer';
 import { Masthead } from '@/components/masthead';
 import { RateProvider } from '@/components/rate-context';
 import { SITE_NAME, SITE_URL } from '@/lib/site';
+import { SPOTS } from '@/lib/spots';
 import './globals.css';
 
 // Condensed display (Archivo's width axis), dot-matrix numerals and Arabic
@@ -26,7 +27,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: { default: `${SITE_NAME} — where are we eating today?`, template: `%s · ${SITE_NAME}` },
   description:
-    '100 food spots around Future University in Egypt, rated 1 to 5 by the students who eat there. Made by the CS Family.',
+    `${SPOTS.length} food spots around Future University in Egypt, rated 1 to 5 by the students who eat there. Made by the CS Family.`,
   applicationName: SITE_NAME,
   openGraph: { siteName: SITE_NAME, type: 'website', locale: 'en_EG' },
   twitter: { card: 'summary_large_image' },
@@ -37,12 +38,20 @@ export const viewport: Viewport = {
   colorScheme: 'dark',
 };
 
+// The menu feeds out of the printer once per visit, not on every way back to
+// it. Set before first paint so a return trip doesn't flash the animation.
+const PRINTED = `try{if(sessionStorage.getItem('csfs:printed'))document.documentElement.dataset.printed='1'}catch(e){}`;
+
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
     <html
       lang="en"
       className={`${archivo.variable} ${handjet.variable} ${plexMono.variable} ${plexArabic.variable}`}
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: PRINTED }} />
+      </head>
       <body>
         <a className="skip" href="#main">
           Skip to content

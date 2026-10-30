@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { useRef } from 'react';
 
 /** A review photo: a thumbnail on the slip, full size in a lightbox. */
-export function ReviewPhoto({ src, alt }: { src: string; alt: string }) {
+export function ReviewPhoto({ src, alt, caption }: { src: string; alt: string; caption: string }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   return (
     <>
@@ -20,10 +20,22 @@ export function ReviewPhoto({ src, alt }: { src: string; alt: string }) {
           if (event.target === event.currentTarget) event.currentTarget.close();
         }}
       >
-        <Image src={src} alt={alt} width={1600} height={1200} sizes="min(960px, 100vw)" />
-        <button type="button" onClick={() => dialogRef.current?.close()}>
-          Close
-        </button>
+        <div className="lightbox__paper paper torn-b">
+          <div className="lightbox__top">
+            <p className="label" dir="auto">
+              {caption}
+            </p>
+            <button
+              type="button"
+              className="sheet__close"
+              onClick={() => dialogRef.current?.close()}
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
+          <Image src={src} alt={alt} width={1600} height={1200} sizes="min(960px, 100vw)" />
+        </div>
       </dialog>
     </>
   );

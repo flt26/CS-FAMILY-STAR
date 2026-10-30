@@ -1,6 +1,7 @@
 import 'server-only';
 import { cacheLife, cacheTag } from 'next/cache';
-import { isOwnImageUrl, supabase } from './supabase';
+import { isSpotId } from './spots';
+import { ownImageUrl, supabase } from './supabase';
 
 export interface Review {
   id: number;
@@ -30,6 +31,8 @@ export interface Scoreboard {
   total: number;
   /** Mean of every verdict, used as the prior when ranking. */
   mean: number;
+  /** The newest verdict, with or without a comment. */
+  latest: { spotId: string; rating: number; createdAt: string } | null;
 }
 
 const REVIEW_COLUMNS = 'id, restaurant_id, rating, comment, user_name, image_url, created_at';
@@ -38,23 +41,32 @@ const reason = (error: unknown) =>
   error && typeof error === 'object' && 'message' in error ? String(error.message) : String(error);
 const PAGE_SIZE = 1000;
 
+// An outage is cached for seconds rather than minutes so the next visit
+// retries. It must still last 5 minutes or more: shorter-lived results are
+// left out of prerendering, and static routes that read them fail instead.
+const OUTAGE = { stale: 60, revalidate: 10, expire: 300 };
+
 /** Ratings written before validation existed can be anything; keep 1–5 only. */
 function validRating(value: unknown): number | null {
   const rating = Number(value);
   return Number.isFinite(rating) && rating >= 1 && rating <= 5 ? rating : null;
 }
 
+// The first version stored text of any length. Anything past these is cut on
+// read, so a few megabyte-sized rows can't bloat or break a page.
+const READ_MAX = { name: 64, comment: 2000 };
+
 function toReview(row: Record<string, unknown>): Review | null {
   const rating = validRating(row.rating);
-  if (rating === null || typeof row.restaurant_id !== 'string') return null;
-  const name = typeof row.user_name === 'string' ? row.user_name.trim() : '';
+  if (rating === null || !isSpotId(row.restaurant_id)) return null;
+  const name = typeof row.user_name === 'string' ? row.user_name.trim().slice(0, READ_MAX.name) : '';
   return {
     id: Number(row.id),
     spotId: row.restaurant_id,
     rating: Math.round(rating),
-    comment: typeof row.comment === 'string' ? row.comment.trim() : '',
+    comment: typeof row.comment === 'string' ? row.comment.trim().slice(0, READ_MAX.comment) : '',
     name: name || 'Anonymous',
-    imageUrl: isOwnImageUrl(row.image_url) ? row.image_url : null,
+    imageUrl: ownImageUrl(row.image_url),
     createdAt: String(row.created_at),
   };
 }
@@ -83,9 +95,11 @@ export async function getScoreboard(): Promise<Scoreboard> {
     const stats: Record<string, SpotStats> = {};
     let total = 0;
     let sum = 0;
+    let latest: Scoreboard['latest'] = null;
     for (const row of rows) {
       const rating = validRating(row.rating);
-      if (rating === null) continue;
+      // Rows written straight to the database can carry any id, "__proto__" included.
+      if (rating === null || !isSpotId(row.restaurant_id)) continue;
       const entry = (stats[row.restaurant_id] ??= {
         count: 0,
         average: 0,
@@ -101,39 +115,59 @@ export async function getScoreboard(): Promise<Scoreboard> {
       if (!entry.lastAt || row.created_at > entry.lastAt) entry.lastAt = row.created_at;
       total += 1;
       sum += rating;
+      if (!latest || row.created_at > latest.createdAt) {
+        latest = { spotId: row.restaurant_id, rating: Math.round(rating), createdAt: row.created_at };
+      }
     }
     for (const entry of Object.values(stats)) {
       entry.average = Math.round((entry.sum / entry.count) * 10) / 10;
     }
 
     cacheLife('minutes');
-    return { ok: true, stats, total, mean: total ? sum / total : 0 };
+    return { ok: true, stats, total, mean: total ? sum / total : 0, latest };
   } catch (error) {
     console.error('Could not load review stats:', reason(error));
-    // Keep an outage out of the cache so the next request retries.
-    cacheLife('seconds');
-    return { ok: false, stats: {}, total: 0, mean: 0 };
+    cacheLife(OUTAGE);
+    return { ok: false, stats: {}, total: 0, mean: 0, latest: null };
   }
 }
 
-export async function getSpotReviews(spotId: string): Promise<{ ok: boolean; reviews: Review[] }> {
+export async function getSpotReviews(
+  spotId: string,
+): Promise<{ ok: boolean; reviews: Review[]; first: Review | null }> {
   'use cache';
   cacheTag('reviews', `reviews:${spotId}`);
 
   try {
-    const { data, error } = await supabase()
-      .from('reviews')
-      .select(REVIEW_COLUMNS)
-      .eq('restaurant_id', spotId)
-      .order('created_at', { ascending: false })
-      .limit(200);
-    if (error) throw error;
+    const [newest, oldest] = await Promise.all([
+      supabase()
+        .from('reviews')
+        .select(REVIEW_COLUMNS)
+        .eq('restaurant_id', spotId)
+        .order('created_at', { ascending: false })
+        .limit(200),
+      // The initial commit, which may be older than the newest 200.
+      supabase()
+        .from('reviews')
+        .select(REVIEW_COLUMNS)
+        .eq('restaurant_id', spotId)
+        .gte('rating', 1)
+        .lte('rating', 5)
+        .order('created_at', { ascending: true })
+        .limit(1),
+    ]);
+    if (newest.error) throw newest.error;
+    if (oldest.error) throw oldest.error;
     cacheLife('minutes');
-    return { ok: true, reviews: data.map(toReview).filter((review) => review !== null) };
+    return {
+      ok: true,
+      reviews: newest.data.map(toReview).filter((review) => review !== null),
+      first: oldest.data.length ? toReview(oldest.data[0]) : null,
+    };
   } catch (error) {
     console.error(`Could not load reviews for ${spotId}:`, reason(error));
-    cacheLife('seconds');
-    return { ok: false, reviews: [] };
+    cacheLife(OUTAGE);
+    return { ok: false, reviews: [], first: null };
   }
 }
 
@@ -146,8 +180,9 @@ export async function getRecentReviews(limit = 8): Promise<Review[]> {
     const { data, error } = await supabase()
       .from('reviews')
       .select(REVIEW_COLUMNS)
+      .neq('comment', '')
       .order('created_at', { ascending: false })
-      .limit(limit * 6);
+      .limit(limit * 4);
     if (error) throw error;
     cacheLife('minutes');
     // One slip per spot, so a busy hour at one counter doesn't fill the whole feed.
@@ -162,7 +197,7 @@ export async function getRecentReviews(limit = 8): Promise<Review[]> {
     return recent;
   } catch (error) {
     console.error('Could not load recent reviews:', reason(error));
-    cacheLife('seconds');
+    cacheLife(OUTAGE);
     return [];
   }
 }

@@ -1,27 +1,36 @@
+import { notFound } from 'next/navigation';
 import { ImageResponse } from 'next/og';
 import { orderNo } from '@/components/marks';
 import { plural } from '@/lib/format';
 import { OG, OgBarcode, ogFonts, OgStar } from '@/lib/og';
 import { getScoreboard } from '@/lib/reviews';
-import { AREAS, CRAVINGS, getSpot } from '@/lib/spots';
+import { AREAS, CRAVINGS, getSpot, SPOTS } from '@/lib/spots';
 import { VERDICTS } from '@/lib/verdicts';
 
 export const alt = 'A spot on CS Family Star, the FUE food guide';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
+// Drawn at build time like the pages, so crawlers get a cached image.
+export function generateStaticParams() {
+  return SPOTS.map((spot) => ({ id: spot.id }));
+}
+
 export default async function Image({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const spot = getSpot(id);
-  const stats = spot ? (await getScoreboard()).stats[spot.id] : undefined;
-  const name = (spot?.brand ?? 'Not on the menu').toUpperCase();
-  const where = spot ? `${AREAS[spot.area].en} · ${CRAVINGS[spot.craving].en}`.toUpperCase() : '';
+  if (!spot) notFound();
+  const board = await getScoreboard();
+  const stats = board.stats[spot.id];
+  const name = spot.brand.toUpperCase();
+  const where = `${AREAS[spot.area].en} · ${CRAVINGS[spot.craving].en}`.toUpperCase();
   const score = stats ? stats.average.toFixed(1) : '?';
   const footnote = stats
-    ? `×${plural(stats.count, 'RECEIPT', 'RECEIPTS')} · ${VERDICTS[Math.round(stats.average)].cs.toUpperCase()}`
-    : 'OPEN TICKET · BE THE FIRST TO RATE IT';
-  const order = `ORDER #${orderNo(id).toUpperCase()}`;
-  const text = `${name} ${where} ${score} /5 ${footnote} ${order} CS FAMILY STAR RATED BY FUE STUDENTS 0123456789`;
+    ? `${plural(stats.count, 'REVIEW', 'REVIEWS')} · ${VERDICTS[Math.round(stats.average)].cs.toUpperCase()}`
+    : board.ok
+      ? 'NO REVIEWS YET · BE THE FIRST TO RATE IT'
+      : 'RATED BY FUE STUDENTS';
+  const order = `ORDER #${orderNo(spot.id).toUpperCase()}`;
 
   return new ImageResponse(
     (
@@ -76,6 +85,6 @@ export default async function Image({ params }: { params: Promise<{ id: string }
         </div>
       </div>
     ),
-    { ...size, fonts: await ogFonts(text) },
+    { ...size, fonts: await ogFonts() },
   );
 }

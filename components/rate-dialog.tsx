@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { startTransition, useActionState, useEffect, useRef, useState } from 'react';
 import { submitReview, type ReviewState } from '@/app/actions';
-import { formatStamp } from '@/lib/format';
+import { formatStamp, langOf } from '@/lib/format';
 import { rememberVerdict, saveNickname, useNickname } from '@/lib/local-profile';
-import { cleanName, LIMITS, nameError, type FieldErrors } from '@/lib/review-input';
+import { cleanName, LIMITS, nameError, type FieldErrors, type ReviewField } from '@/lib/review-input';
 import { AREAS, CRAVINGS, type Spot } from '@/lib/spots';
 import { NICKNAMES, VERDICTS } from '@/lib/verdicts';
 import { Asterisk, Barcode, DotGlyph, orderNo } from './marks';
@@ -14,6 +14,31 @@ import { ShareButton } from './share-button';
 import { usePhoto } from './use-photo';
 
 const IDLE: ReviewState = { status: 'idle' };
+const OFFLINE: ReviewState = {
+  status: 'error',
+  message: 'Couldn’t reach the server. Your review is still here, so try again in a moment.',
+};
+// Where to send focus when a field is wrong, in the order the form asks for them.
+const FIELD_TARGETS: [ReviewField, string][] = [
+  ['rating', 'input[name="rating"]'],
+  ['comment', '#rate-comment'],
+  ['photo', 'input[name="photo"]'],
+  ['name', '#rate-name'],
+];
+
+const STEP_NAMES: Record<ReviewField, string> = {
+  spot: 'the spot',
+  rating: '01 (rating)',
+  comment: '02 (comment)',
+  photo: '03 (photo)',
+  name: '04 (nickname)',
+};
+
+/** After a refused submit, put the cursor where the first problem is. */
+function focusFirstProblem(form: HTMLFormElement | null, problems: FieldErrors) {
+  const target = FIELD_TARGETS.find(([field]) => problems[field]);
+  if (target) form?.querySelector<HTMLElement>(target[1])?.focus();
+}
 
 export interface RateRequest {
   spot: Spot;
@@ -24,6 +49,7 @@ export interface RateRequest {
 /** Opens whenever `request` is set; calls onClose once the dialog has closed. */
 export function RateDialog({ request, onClose }: { request: RateRequest | null; onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const pressedBackdrop = useRef(false);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -48,9 +74,14 @@ export function RateDialog({ request, onClose }: { request: RateRequest | null; 
       onCancel={(event) => {
         if (sending()) event.preventDefault();
       }}
+      // Only a press and release both on the backdrop closes it, so selecting
+      // text in the comment and letting go outside the sheet keeps the draft.
+      onPointerDown={(event) => {
+        pressedBackdrop.current = event.target === event.currentTarget;
+      }}
       onClick={(event) => {
-        // A click on the backdrop lands on the <dialog> element itself.
-        if (event.target === event.currentTarget && !sending()) close();
+        if (pressedBackdrop.current && event.target === event.currentTarget && !sending()) close();
+        pressedBackdrop.current = false;
       }}
     >
       {request && <RateForm key={request.spot.id} {...request} onDone={close} />}
@@ -59,33 +90,59 @@ export function RateDialog({ request, onClose }: { request: RateRequest | null; 
 }
 
 async function send(previous: ReviewState, formData: FormData): Promise<ReviewState> {
-  const result = await submitReview(previous, formData);
-  if (result.status === 'done') {
-    rememberVerdict(result.spotId, result.rating);
-    saveNickname(cleanName(String(formData.get('name') ?? '')));
+  try {
+    const result = await submitReview(previous, formData);
+    if (result.status === 'done') {
+      rememberVerdict(result.spotId, result.rating);
+      saveNickname(cleanName(String(formData.get('name') ?? '')));
+    }
+    return result;
+  } catch {
+    // A dropped connection must not take the page (and the draft) down with it.
+    return OFFLINE;
   }
-  return result;
 }
+
+const randomNickname = (except = '') => {
+  const options = NICKNAMES.filter((nickname) => nickname !== except);
+  return options[Math.floor(Math.random() * options.length)];
+};
 
 function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) {
   const savedName = useNickname();
   const [state, dispatch, pending] = useActionState(send, IDLE);
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
-  const [name, setName] = useState(savedName);
+  // First-timers start with a fun handle instead of an empty required field.
+  const [name, setName] = useState(() => savedName || randomNickname());
   const [localErrors, setLocalErrors] = useState<FieldErrors>({});
   const photo = usePhoto();
+  const formRef = useRef<HTMLFormElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const errors: FieldErrors = { ...(state.status === 'error' ? state.fields : {}), ...localErrors };
-  const where = `${CRAVINGS[spot.craving].en} · ${AREAS[spot.area].en}`;
+  const missing = FIELD_TARGETS.filter(([field]) => errors[field]).map(([field]) => STEP_NAMES[field]);
+
+  useEffect(() => {
+    if (state.status === 'error' && state.fields) focusFirstProblem(formRef.current, state.fields);
+  }, [state]);
 
   if (state.status === 'done') {
-    return <Printed spot={spot} name={cleanName(name)} result={state} onDone={onDone} />;
+    return (
+      <Printed
+        spot={spot}
+        name={cleanName(name)}
+        comment={comment.trim().length}
+        hasPhoto={Boolean(photo.file)}
+        result={state}
+        onDone={onDone}
+      />
+    );
   }
 
   return (
     <form
+      ref={formRef}
       className="sheet paper torn-b"
       noValidate
       data-pending={pending || undefined}
@@ -93,33 +150,38 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
       // action, which would wipe the photo and nickname on a validation error.
       onSubmit={(event) => {
         event.preventDefault();
+        if (pending) return;
         const formData = new FormData(event.currentTarget);
         const problems: FieldErrors = {};
-        if (!rating) problems.rating = 'Pick a number first.';
+        if (!rating) problems.rating = 'Pick a rating from 1 to 5.';
         const nameProblem = nameError(cleanName(name));
         if (nameProblem) problems.name = nameProblem;
         if (photo.status === 'working') problems.photo = 'Still shrinking your photo…';
         setLocalErrors(problems);
-        if (Object.keys(problems).length > 0) return;
+        if (Object.keys(problems).length > 0) {
+          focusFirstProblem(event.currentTarget, problems);
+          return;
+        }
         if (photo.file) formData.set('photo', photo.file);
         else formData.delete('photo');
         startTransition(() => dispatch(formData));
       }}
     >
       <div className="sheet__top">
-        <p className="label">Order #{orderNo(spot.id)}</p>
+        <p className="label sheet__kicker">Rate</p>
         <button type="button" className="sheet__close" onClick={onDone} disabled={pending} aria-label="Close">
           ×
         </button>
       </div>
-      <p className="label sheet__kicker">Rate</p>
       <h2 id="rate-title" className="sheet__title cond">
         {spot.brand}
       </h2>
-      <p className="label sheet__where">{where}</p>
+      <p className="label sheet__where">
+        {CRAVINGS[spot.craving].en} · {AREAS[spot.area].en}
+      </p>
       {open && (
         <p className="sheet__first">
-          <Asterisk /> First review on this spot. It becomes the initial commit.
+          <Asterisk /> First review on this spot: your name goes on its ticket.
         </p>
       )}
       <input type="hidden" name="spotId" value={spot.id} />
@@ -146,9 +208,7 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
                 }}
               />
               <span className="scale__key">
-                <span className="dot" aria-hidden="true">
-                  {value}
-                </span>
+                <span className="dot">{value}</span>
                 <span className="scale__word">{VERDICTS[value].word}</span>
               </span>
             </label>
@@ -164,7 +224,7 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
               </span>
             </>
           ) : (
-            <span className="label">1 = segfault · 5 = ship it</span>
+            <span className="label">Tap a number</span>
           )}
         </p>
         {errors.rating && (
@@ -186,11 +246,13 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
           className="lined"
           name="comment"
           dir="auto"
-          rows={3}
+          lang={langOf(comment)}
+          rows={2}
           maxLength={LIMITS.comment}
           value={comment}
           placeholder="What did you order? Was it worth it?"
           aria-invalid={Boolean(errors.comment)}
+          aria-describedby={errors.comment ? 'rate-comment-error' : undefined}
           onChange={(event) => setComment(event.target.value)}
         />
         <p className="step__hint">
@@ -202,7 +264,7 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
           </span>
         </p>
         {errors.comment && (
-          <p className="error" role="alert">
+          <p className="error" id="rate-comment-error" role="alert">
             {errors.comment}
           </p>
         )}
@@ -222,6 +284,7 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
               type="file"
               name="photo"
               accept="image/*"
+              aria-describedby={errors.photo ? 'rate-photo-error' : undefined}
               onChange={(event) => photo.pick(event.target.files?.[0])}
             />
             <span className="photo__face">
@@ -232,7 +295,7 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
                 <span className="cond photo__title">
                   {photo.status === 'working' ? 'Shrinking…' : photo.preview ? 'Change photo' : 'Add a photo'}
                 </span>
-                <span className="photo__note">Prints in halftone on your receipt, opens in full colour.</span>
+                <span className="photo__note">Goes on your receipt. Tap it there to see it full size.</span>
               </span>
             </span>
           </label>
@@ -251,7 +314,7 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
                   if (fileRef.current) fileRef.current.value = '';
                 }}
               >
-                Remove
+                Remove photo
               </button>
             </div>
           )}
@@ -262,7 +325,7 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
           </p>
         )}
         {errors.photo && (
-          <p className="error" role="alert">
+          <p className="error" id="rate-photo-error" role="alert">
             {errors.photo}
           </p>
         )}
@@ -271,7 +334,7 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
       <div className="step">
         <label className="step__head" htmlFor="rate-name">
           <span>
-            <b>04</b> Print name as
+            <b>04</b> Nickname
           </span>
           <span>Required</span>
         </label>
@@ -284,24 +347,27 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
             className="handle__input"
             name="name"
             dir="auto"
+            lang={langOf(name)}
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              setName(event.target.value);
+              setLocalErrors((current) => ({ ...current, name: undefined }));
+            }}
             autoComplete="nickname"
             maxLength={LIMITS.nameMax}
             aria-invalid={Boolean(errors.name)}
-            aria-describedby="rate-name-hint"
+            aria-describedby={errors.name ? 'rate-name-hint rate-name-error' : 'rate-name-hint'}
           />
           <button
             type="button"
             className="key key--paper handle__shuffle"
             onClick={() => {
-              const options = NICKNAMES.filter((nickname) => nickname !== name);
-              setName(options[Math.floor(Math.random() * options.length)]);
+              setName(randomNickname(name));
               setLocalErrors((current) => ({ ...current, name: undefined }));
             }}
           >
             <DotGlyph name="dice" />
-            Shuffle
+            Shuffle<span className="sr-only"> nickname</span>
           </button>
         </div>
         <p className="step__hint step__hint--stack" id="rate-name-hint">
@@ -311,7 +377,7 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
           </span>
         </p>
         {errors.name && (
-          <p className="error" role="alert">
+          <p className="error" id="rate-name-error" role="alert">
             {errors.name}
           </p>
         )}
@@ -324,41 +390,24 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
         </label>
       </div>
 
-      <div className="rule-double sheet__rule" />
-      <dl className="summary">
-        <div>
-          <dt>Rating</dt>
-          <dd>{rating ? `${rating}/5 · ${VERDICTS[rating].cs.toLowerCase()}` : '—'}</dd>
-        </div>
-        <div>
-          <dt>Comment</dt>
-          <dd>{comment.trim() ? `${comment.trim().length} chars` : 'none'}</dd>
-        </div>
-        <div>
-          <dt>Photo</dt>
-          <dd>{photo.file ? `${Math.max(1, Math.round(photo.file.size / 1024))} KB` : 'none'}</dd>
-        </div>
-        <div>
-          <dt>Print name</dt>
-          <dd dir="auto">{cleanName(name) || '—'}</dd>
-        </div>
-      </dl>
-
-      {state.status === 'error' && !state.fields && (
-        <p className="sheet__error" role="alert">
-          {state.message}
-        </p>
-      )}
-      <button type="submit" className="key key--red sheet__submit" disabled={pending}>
-        <span className="sheet__submit-label">
-          <Asterisk />
-          {pending ? 'Printing…' : 'Print my review'}
-        </span>
-        <span className="ar" lang="ar" dir="rtl">
-          اطبع
-        </span>
-      </button>
-      <p className="sheet__fine">Keep it honest, keep it kind. Receipts are public.</p>
+      <div className="sheet__send">
+        {missing.length > 0 && <p className="sheet__missing">Check {missing.join(' and ')} above.</p>}
+        {state.status === 'error' && !state.fields && (
+          <p className="sheet__error" role="alert">
+            {state.message}
+          </p>
+        )}
+        <button type="submit" className="key key--red sheet__submit" aria-disabled={pending}>
+          <span className="sheet__submit-label">
+            <Asterisk />
+            {pending ? 'Printing…' : 'Post my review'}
+          </span>
+          <span className="ar" lang="ar" dir="rtl">
+            انشر
+          </span>
+        </button>
+        <p className="sheet__fine">Reviews are public and can’t be edited or deleted. Keep it honest, keep it kind.</p>
+      </div>
     </form>
   );
 }
@@ -366,11 +415,16 @@ function RateForm({ spot, open, onDone }: RateRequest & { onDone: () => void }) 
 function Printed({
   spot,
   name,
+  comment,
+  hasPhoto,
   result,
   onDone,
 }: {
   spot: Spot;
   name: string;
+  /** Length of the comment that was posted. */
+  comment: number;
+  hasPhoto: boolean;
   result: Extract<ReviewState, { status: 'done' }>;
   onDone: () => void;
 }) {
@@ -396,11 +450,11 @@ function Printed({
       </div>
       <p className="heard__big dot">Heard!</p>
       <p className="heard__ar" lang="ar" dir="rtl">
-        اتسجل يا معلم
+        اتسجل! تسلم إيدك
       </p>
-      <pre className="heard__git">
-        [main{result.first && <span className="hot"> (root-commit)</span>} {receipt}] {spot.id.replace(/^fue-/, '')}:{' '}
-        {result.rating}/5{'\n'} 1 review changed, 1 insertion(+)
+      <pre className="heard__git" aria-hidden="true">
+        [main{result.first && <span className="hot"> (root-commit)</span>} {receipt}] {spot.id.replace(/^fue-/, '')}{' '}
+        {result.rating}/5{'\n'} 1 review, 1 insertion(+)
       </pre>
       <div className="slot" aria-hidden="true" />
       <div className="paper heard__receipt torn-b">
@@ -419,28 +473,44 @@ function Printed({
         <p className="label heard__meta">
           {AREAS[spot.area].en} · {CRAVINGS[spot.craving].en}
         </p>
-        <p className="stamp" aria-hidden="true">
-          Posted
-          <small>{formatStamp(result.at).split(' · ')[0]}</small>
-        </p>
         <div className="rule-dash" />
-        <p className="leader">
-          <span>Rating</span>
-          <b>{result.rating}/5</b>
-        </p>
-        <p className="leader">
-          <span>Verdict</span>
-          <b>
-            {verdict.cs} ·{' '}
-            <span lang="ar" dir="rtl">
-              {verdict.ar}
-            </span>
-          </b>
-        </p>
-        <p className="leader">
-          <span>Printed as</span>
-          <b dir="auto">{name}</b>
-        </p>
+        <div className="heard__lines">
+          <p className="leader">
+            <span>Rating</span>
+            <b>{result.rating}/5</b>
+          </p>
+          <p className="leader">
+            <span>Verdict</span>
+            <b>
+              {verdict.cs} ·{' '}
+              <span lang="ar" dir="rtl">
+                {verdict.ar}
+              </span>
+            </b>
+          </p>
+          {comment > 0 && (
+            <p className="leader">
+              <span>Comment</span>
+              <b>{comment} chars</b>
+            </p>
+          )}
+          {hasPhoto && (
+            <p className="leader">
+              <span>Photo</span>
+              <b>attached</b>
+            </p>
+          )}
+          <p className="leader">
+            <span>Printed as</span>
+            <b dir="auto" lang={langOf(name)}>
+              {name}
+            </b>
+          </p>
+          <p className="stamp" aria-hidden="true">
+            Posted
+            <small>{formatStamp(result.at).split(' · ')[0]}</small>
+          </p>
+        </div>
         {result.first && (
           <p className="slip__flag label">
             <Asterisk />
@@ -453,11 +523,11 @@ function Printed({
       <div className="heard__actions">
         {onSpotPage ? (
           <button type="button" className="key key--chalk" onClick={onDone}>
-            See it on the ticket →
+            See your review <span aria-hidden="true">→</span>
           </button>
         ) : (
           <Link className="key key--chalk" href={`/spot/${spot.id}`} onClick={onDone}>
-            See it on the ticket →
+            See your review <span aria-hidden="true">→</span>
           </Link>
         )}
         <ShareButton path={`/spot/${spot.id}`} title={`${spot.brand} on CS Family Star`} />

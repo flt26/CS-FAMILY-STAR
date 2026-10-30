@@ -7,9 +7,9 @@ import { MyVerdict } from '@/components/my-verdict';
 import { RateTrigger } from '@/components/rate-context';
 import { ShareButton } from '@/components/share-button';
 import { Slip, tiltFor } from '@/components/slip';
-import { formatDate, plural } from '@/lib/format';
+import { formatDate, langOf, plural } from '@/lib/format';
 import { getScoreboard, getSpotReviews, type Review, type Scoreboard, type SpotStats } from '@/lib/reviews';
-import { rankScore } from '@/lib/score';
+import { rankOf, rankScore } from '@/lib/score';
 import { AREAS, CRAVINGS, getSpot, mapsUrl, SPOTS, type Spot } from '@/lib/spots';
 import { VERDICTS } from '@/lib/verdicts';
 
@@ -21,13 +21,14 @@ export async function generateMetadata({ params }: PageProps<'/spot/[id]'>): Pro
   const { id } = await params;
   const spot = getSpot(id);
   if (!spot) return { title: 'Not on the menu' };
-  const stats = (await getScoreboard()).stats[spot.id];
-  const where = `${CRAVINGS[spot.craving].en} at ${AREAS[spot.area].en}, New Cairo`;
+  const board = await getScoreboard();
+  const stats = board.stats[spot.id];
+  const where = `${CRAVINGS[spot.craving].en} · ${spot.vicinity}`;
   return {
     title: `${spot.brand} · ${AREAS[spot.area].en}`,
     description: stats
-      ? `${stats.average.toFixed(1)}/5 from ${plural(stats.count, 'student review')}. ${where}, rated by FUE students.`
-      : `${where}. No student reviews yet — be the first on CS Family Star.`,
+      ? `${stats.average.toFixed(1)}/5 from ${plural(stats.count, 'student review')}. ${where}. On CS Family Star.`
+      : `${where}. See what FUE students say about ${spot.brand}, or be the first to rate it.`,
     alternates: { canonical: `/spot/${spot.id}` },
   };
 }
@@ -44,14 +45,16 @@ async function SpotDetails({ params }: Pick<PageProps<'/spot/[id]'>, 'params'>) 
   const { id } = await params;
   const spot = getSpot(id);
   if (!spot) notFound();
-  const [board, { ok, reviews }] = await Promise.all([getScoreboard(), getSpotReviews(spot.id)]);
+  const [board, { ok, reviews, first }] = await Promise.all([getScoreboard(), getSpotReviews(spot.id)]);
   const stats = board.stats[spot.id];
-  const first = stats && reviews.find((review) => review.createdAt === stats.firstAt);
+  // Rating-only verdicts print as one tally instead of a stack of empty receipts.
+  const said = reviews.filter((review) => review.comment || review.imageUrl);
+  const quiet = reviews.filter((review) => !review.comment && !review.imageUrl);
 
   return (
     <div className="spot">
-      <Link className="back" href="/#menu">
-        ← The menu
+      <Link className="back" href="/#menu-lines">
+        <span aria-hidden="true">←</span> The menu
       </Link>
       <OrderTicket spot={spot} board={board} stats={stats} first={first} />
       <section className="receipts" aria-labelledby="receipts-title">
@@ -60,13 +63,13 @@ async function SpotDetails({ params }: Pick<PageProps<'/spot/[id]'>, 'params'>) 
             Receipts
           </h2>
           <p className="ar" lang="ar" dir="rtl">
-            الإيصالات
+            قالوا إيه
           </p>
         </header>
         {!ok && <p className="notice">Reviews are offline for a moment. Try again in a minute.</p>}
         {reviews.length > 0 ? (
           <ol className="slips">
-            {reviews.map((review, index) => (
+            {said.map((review, index) => (
               <Slip
                 key={review.id}
                 review={review}
@@ -75,23 +78,44 @@ async function SpotDetails({ params }: Pick<PageProps<'/spot/[id]'>, 'params'>) 
                 tilt={tiltFor(index)}
               />
             ))}
+            {quiet.length > 0 && <Tally reviews={quiet} said={said.length > 0} />}
           </ol>
         ) : (
           ok && (
-            <div className="empty">
-              <p>
-                <b>Open ticket.</b> Nobody has rated {spot.brand} yet. Your review becomes its initial commit and
-                stays first on this page.
-              </p>
-              <RateTrigger spotId={spot.id} open className="key key--red empty__cta">
-                Be the first
-              </RateTrigger>
-            </div>
+            <p className="empty">
+              <b>No reviews yet.</b> Rate it first and your name goes on this ticket as the first reviewer.
+            </p>
           )
         )}
       </section>
       <SameCounter spot={spot} board={board} />
     </div>
+  );
+}
+
+/** Rating-only verdicts, summed up on one slip. */
+function Tally({ reviews, said }: { reviews: Review[]; said: boolean }) {
+  const counts = [5, 4, 3, 2, 1].map((star) => [star, reviews.filter((review) => review.rating === star).length]);
+  return (
+    <li className="slip slip--tally paper torn-t torn-b shadowed">
+      <p className="slip__top label">
+        <span>
+          {said ? '+ ' : ''}
+          {plural(reviews.length, 'quick rating')}
+        </span>
+        <span>no comment</span>
+      </p>
+      {counts
+        .filter(([, count]) => count > 0)
+        .map(([star, count]) => (
+          <p className="leader" key={star}>
+            <span>
+              {star}/5 · {VERDICTS[star].cs}
+            </span>
+            <b>×{count}</b>
+          </p>
+        ))}
+    </li>
   );
 }
 
@@ -104,24 +128,25 @@ function OrderTicket({
   spot: Spot;
   board: Scoreboard;
   stats: SpotStats | undefined;
-  first: Review | undefined;
+  first: Review | null;
 }) {
   const branch = spot.name.startsWith(`${spot.brand} - `) ? spot.name.slice(spot.brand.length + 3) : null;
-  const rated = SPOTS.filter((other) => board.stats[other.id]);
-  const rank = stats
-    ? 1 + rated.filter((other) => rankScore(board.stats[other.id], board.mean) > rankScore(stats, board.mean)).length
-    : null;
+  const rank = rankOf(stats, board);
   const verdict = stats ? VERDICTS[Math.round(stats.average)] : null;
+  // During an outage a rated spot must not look like an open ticket.
+  const open = board.ok && !stats;
 
   return (
     <article className="order paper torn-b shadowed" aria-labelledby="spot-title">
       <div className="order__top">
         {rank ? (
           <span className={rank <= 3 ? 'tag' : 'tag tag--ink'}>
-            Rank #{String(rank).padStart(2, '0')} of {rated.length}
+            Rank #{String(rank).padStart(2, '0')} of {Object.keys(board.stats).length}
           </span>
-        ) : (
+        ) : open ? (
           <span className="tag tag--open">Open ticket</span>
+        ) : (
+          <span className="tag tag--ink">Scores offline</span>
         )}
         <span className="label muted">Order #{orderNo(spot.id)}</span>
       </div>
@@ -137,8 +162,8 @@ function OrderTicket({
       {stats && verdict ? (
         <>
           <div className="order__total">
-            <span className="label">Total</span>
-            <span className="label">×{plural(stats.count, 'receipt')}</span>
+            <span className="label">Avg</span>
+            <span className="label">{plural(stats.count, 'review')}</span>
             <p className="order__score dot">
               {stats.average.toFixed(1)}
               <small>/5</small>
@@ -166,21 +191,25 @@ function OrderTicket({
       )}
 
       <div className="order__actions">
-        <RateTrigger spotId={spot.id} open={!stats} className="key key--red">
-          <span>{stats ? 'Rate it' : 'Be the first'}</span>
+        <RateTrigger spotId={spot.id} open={open} className="key key--red">
+          <span>{open ? 'Be the first' : 'Rate it'}</span>
           <span className="ar" lang="ar" dir="rtl">
-            قيّمه
+            {open ? 'خليك الأول' : 'قيّمه'}
           </span>
         </RateTrigger>
         <a className="key key--paper" href={mapsUrl(spot)} target="_blank" rel="noopener noreferrer">
-          Maps ↗
+          Maps <span aria-hidden="true">↗</span>
         </a>
         <ShareButton path={`/spot/${spot.id}`} title={`${spot.brand} on CS Family Star`} className="key key--paper" />
       </div>
       <MyVerdict spotId={spot.id} />
       {first && (
         <p className="order__first">
-          Initial commit by <b dir="auto">{first.name}</b> · {formatDate(first.createdAt)}
+          First review by{' '}
+          <b dir="auto" lang={langOf(first.name)}>
+            {first.name}
+          </b>{' '}
+          · {formatDate(first.createdAt)}
         </p>
       )}
       <Barcode code={spot.id} />
@@ -222,8 +251,10 @@ function SameCounter({ spot, board }: { spot: Spot; board: Scoreboard }) {
   const shown = neighbours.slice(0, 8);
 
   return (
-    <aside className="counter paper torn-b shadowed" aria-labelledby="counter-title">
-      <p className="label">Same counter</p>
+    <aside className="counter paper torn-b shadowed" aria-labelledby="counter-kicker counter-title">
+      <p className="label" id="counter-kicker">
+        More at
+      </p>
       <h2 id="counter-title" className="cond">
         {AREAS[spot.area].en}
       </h2>
@@ -237,8 +268,10 @@ function SameCounter({ spot, board }: { spot: Spot; board: Scoreboard }) {
                 <span className="line__lead" aria-hidden="true" />
                 {stats ? (
                   <span className="dot">{stats.average.toFixed(1)}</span>
-                ) : (
+                ) : board.ok ? (
                   <span className="open">open</span>
+                ) : (
+                  <span className="dot">--</span>
                 )}
               </Link>
             </li>

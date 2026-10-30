@@ -19,10 +19,24 @@ export function supabase(): SupabaseClient {
   return client;
 }
 
-/** True for public URLs of objects in our own review-images bucket. */
-export function isOwnImageUrl(url: unknown): url is string {
-  return (
-    typeof url === 'string' &&
-    url.startsWith(`${SUPABASE_URL}/storage/v1/object/public/${REVIEW_IMAGES_BUCKET}/`)
-  );
+const OWN_IMAGES = new URL(`/storage/v1/object/public/${REVIEW_IMAGES_BUCKET}/`, SUPABASE_URL);
+
+/**
+ * The normalised URL when `url` points at an object in our own review-images
+ * bucket, otherwise null. Parsing resolves "../" tricks before the check.
+ */
+export function ownImageUrl(url: unknown): string | null {
+  if (typeof url !== 'string') return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.origin === OWN_IMAGES.origin &&
+      parsed.pathname.startsWith(OWN_IMAGES.pathname) &&
+      parsed.pathname.length > OWN_IMAGES.pathname.length &&
+      !parsed.search &&
+      !parsed.hash
+      ? parsed.href
+      : null;
+  } catch {
+    return null;
+  }
 }

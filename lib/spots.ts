@@ -54,9 +54,9 @@ export const AREAS: Record<AreaId, { en: string; ar: string }> = {
   around: { en: 'Around campus', ar: 'جنب الجامعة' },
   '90th': { en: '90th Street', ar: 'شارع التسعين' },
   concord: { en: 'Concord Plaza', ar: 'كونكورد بلازا' },
-  'the-spot': { en: 'The Spot', ar: 'ذا سبوت' },
+  'the-spot': { en: 'The Spot Mall', ar: 'ذا سبوت' },
   'point-90': { en: 'Point 90', ar: 'بوينت ٩٠' },
-  'silver-star': { en: 'Silver Star', ar: 'سيلفر ستار' },
+  'silver-star': { en: 'Silver Star Mall', ar: 'سيلفر ستار' },
   waterway: { en: 'The Waterway', ar: 'الووتر واي' },
   further: { en: 'Further out', ar: 'أبعد شوية' },
 };
@@ -84,10 +84,10 @@ export const CRAVINGS: Record<CravingId, { en: string; ar: string }> = {
   pizza: { en: 'Pizza', ar: 'بيتزا' },
   italian: { en: 'Pasta', ar: 'باستا' },
   sandwiches: { en: 'Sandwiches', ar: 'سندوتشات' },
-  egyptian: { en: 'Egyptian', ar: 'أكل مصري' },
+  egyptian: { en: 'Egyptian food', ar: 'أكل مصري' },
   asian: { en: 'Sushi & Asian', ar: 'سوشي' },
   grill: { en: 'Grill', ar: 'مشويات' },
-  dining: { en: 'Sit-down', ar: 'قعدة' },
+  dining: { en: 'Restaurant', ar: 'مطعم' },
 };
 
 export const SPOTS: readonly Spot[] = [
@@ -194,6 +194,14 @@ export const SPOTS: readonly Spot[] = [
 ];
 
 const BY_ID = new Map(SPOTS.map((spot) => [spot.id, spot]));
+
+const BRANCHES = new Map<string, number>();
+for (const spot of SPOTS) BRANCHES.set(spot.brand, (BRANCHES.get(spot.brand) ?? 0) + 1);
+
+/** The area, for a brand with more than one branch on the list (four Cinnabons); otherwise null. */
+export function branchOf(spot: Spot): string | null {
+  return (BRANCHES.get(spot.brand) ?? 0) > 1 ? AREAS[spot.area].en : null;
+}
 
 export function getSpot(id: string): Spot | undefined {
   return BY_ID.get(id);

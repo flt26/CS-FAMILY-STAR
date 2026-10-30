@@ -1,10 +1,11 @@
+import { SPOTS } from '@/lib/spots';
 import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'CS Family Star',
     short_name: 'CS Star',
-    description: 'Where are we eating today? 100 food spots around FUE, rated by students.',
+    description: `Where are we eating today? ${SPOTS.length} food spots around FUE, rated by students.`,
     start_url: '/',
     display: 'standalone',
     background_color: '#161412',

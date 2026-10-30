@@ -15,26 +15,31 @@ export function formatDate(iso: string): string {
   return Number.isNaN(date.getTime()) ? '' : DATE.format(date);
 }
 
-const RELATIVE = new Intl.RelativeTimeFormat('en', { numeric: 'auto', style: 'short' });
+const RELATIVE = new Intl.RelativeTimeFormat('en', { numeric: 'auto', style: 'long' });
+const CAIRO_DAY = new Intl.DateTimeFormat('en-CA', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  timeZone: 'Africa/Cairo',
+});
 
-// [unit, seconds in one unit, stop using this unit at]
-const UNITS: [Intl.RelativeTimeFormatUnit, number, number][] = [
-  ['minute', 60, 60],
-  ['hour', 60 * 60, 24],
-  ['day', 24 * 60 * 60, 7],
-  ['week', 7 * 24 * 60 * 60, 5],
-];
+/** Days since 1970 on the Cairo calendar, so "yesterday" means the day before. */
+function cairoDay(ms: number): number {
+  return Math.round(Date.parse(CAIRO_DAY.format(ms)) / 86_400_000);
+}
 
-/** "5 min. ago", "yesterday"; falls back to the date after about a month. */
+/** "5 minutes ago", "3 hours ago", "yesterday"; falls back to the date after about a month. */
 export function formatRelative(iso: string, now: number): string {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return '';
-  const seconds = (then - now) / 1000;
-  if (Math.abs(seconds) < 60) return 'just now';
-  for (const [unit, size, limit] of UNITS) {
-    const value = Math.round(seconds / size);
-    if (Math.abs(value) < limit) return RELATIVE.format(value, unit);
-  }
+  const minutes = Math.floor((now - then) / 60_000);
+  // A server clock a little ahead of this device still reads as "just now".
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return RELATIVE.format(-minutes, 'minute');
+  const days = cairoDay(now) - cairoDay(then);
+  if (days <= 0) return RELATIVE.format(-Math.floor(minutes / 60), 'hour');
+  if (days < 7) return RELATIVE.format(-days, 'day');
+  if (days < 35) return RELATIVE.format(-Math.floor(days / 7), 'week');
   return formatDate(iso);
 }
 
@@ -55,4 +60,11 @@ export function formatStamp(iso: string): string {
   const part = (type: Intl.DateTimeFormatPartTypes) =>
     STAMP.formatToParts(date).find((p) => p.type === type)?.value ?? '';
   return `${part('day')}.${part('month')}.${part('year')} · ${part('hour')}:${part('minute')}`;
+}
+
+const ARABIC = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
+/** lang="ar" for text with Arabic letters in it, so it gets the Arabic typeface. */
+export function langOf(text: string): 'ar' | undefined {
+  return ARABIC.test(text) ? 'ar' : undefined;
 }

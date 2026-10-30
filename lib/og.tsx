@@ -1,31 +1,49 @@
 import 'server-only';
 import { cacheLife } from 'next/cache';
+import { SPOTS } from './spots';
 
 // Share images are drawn by next/og, which needs TrueType files rather than
 // the woff2 next/font serves. Google Fonts hands out TTF to non-browser
-// clients, subset to just the characters in the image.
-async function googleFont(family: string, text: string): Promise<ArrayBuffer> {
+// clients, subset to the characters asked for. Every image asks for the same
+// set, so each family is fetched once rather than once per spot.
+const PRINTABLE_ASCII = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).join('');
+const CHARSET = [...new Set(`${PRINTABLE_ASCII}×·…—–’“”${SPOTS.map((spot) => spot.brand.toUpperCase()).join('')}`)].join('');
+
+// A slow Google must not hold a share image hostage.
+async function fetchOk(url: string): Promise<Response> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+  if (!response.ok) throw new Error(`${response.status} from ${url}`);
+  return response;
+}
+
+async function googleFont(family: string): Promise<ArrayBuffer> {
   'use cache';
   cacheLife('max');
   const css = await (
-    await fetch(`https://fonts.googleapis.com/css2?family=${family}&text=${encodeURIComponent(text)}`)
+    await fetchOk(`https://fonts.googleapis.com/css2?family=${family}&text=${encodeURIComponent(CHARSET)}`)
   ).text();
   const url = css.match(/src: url\((.+?)\) format\('(?:opentype|truetype)'\)/)?.[1];
   if (!url) throw new Error(`No TrueType font for ${family}`);
-  return (await fetch(url)).arrayBuffer();
+  return (await fetchOk(url)).arrayBuffer();
 }
 
-export async function ogFonts(text: string) {
-  const [display, dot, mono] = await Promise.all([
-    googleFont('Archivo:wdth,wght@62.5,800', text),
-    googleFont('Handjet:wght@600', text),
-    googleFont('IBM+Plex+Mono:wght@500', text),
-  ]);
-  return [
-    { name: 'Display', data: display, weight: 800 as const, style: 'normal' as const },
-    { name: 'Dot', data: dot, weight: 600 as const, style: 'normal' as const },
-    { name: 'Mono', data: mono, weight: 500 as const, style: 'normal' as const },
-  ];
+/** The three share-image fonts, or none (next/og's built-in sans) if Google Fonts can't be reached. */
+export async function ogFonts() {
+  try {
+    const [display, dot, mono] = await Promise.all([
+      googleFont('Archivo:wdth,wght@62.5,800'),
+      googleFont('Handjet:wght@600'),
+      googleFont('IBM+Plex+Mono:wght@500'),
+    ]);
+    return [
+      { name: 'Display', data: display, weight: 800 as const, style: 'normal' as const },
+      { name: 'Dot', data: dot, weight: 600 as const, style: 'normal' as const },
+      { name: 'Mono', data: mono, weight: 500 as const, style: 'normal' as const },
+    ];
+  } catch (error) {
+    console.error('Share image fonts unavailable:', error);
+    return [];
+  }
 }
 
 export const OG = {

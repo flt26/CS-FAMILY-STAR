@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { plural } from '@/lib/format';
 import { AREAS } from '@/lib/spots';
 import { useExplorerState } from './explorer-context';
 import { DotGlyph } from './marks';
@@ -9,7 +10,7 @@ import type { Row } from './use-explorer';
 
 function jumpToMenu() {
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  document.getElementById('menu')?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  document.getElementById('menu-lines')?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
 }
 
 /** The terminal-style search. Filters the menu below as you type. */
@@ -20,9 +21,9 @@ export function Prompt() {
   // "/" jumps to the search, like every dev tool.
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      const target = event.target as HTMLElement;
       if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
-      if (target.closest('input, textarea, select, [contenteditable], dialog')) return;
+      // Only from "nowhere": never steal a key meant for a focused control.
+      if (document.activeElement && document.activeElement !== document.body) return;
       event.preventDefault();
       inputRef.current?.focus();
     }
@@ -58,7 +59,7 @@ export function Prompt() {
         onChange={(event) => setQuery(event.target.value)}
       />
       <span className="prompt__ph" aria-hidden="true">
-        koshary, coffee, dreams mall
+        koshary, latte, burgers
         <i className="caret" />
       </span>
       {query ? (
@@ -74,11 +75,17 @@ export function Prompt() {
   );
 }
 
-function pick(rows: Row[]): Row | undefined {
-  if (rows.length === 0) return undefined;
-  const rated = rows.filter((row) => row.stats);
-  // Mostly the crowd favourites, sometimes a wildcard so open tickets get a shot.
-  const pool = rated.length > 0 && Math.random() < 0.75 ? rated.slice(0, 10) : rows;
+function pick(rows: Row[], previous: Row | null): Row | undefined {
+  // Never hand back the same answer twice in a row when there is a choice.
+  const choices = rows.length > 1 && previous ? rows.filter((row) => row.spot.id !== previous.spot.id) : rows;
+  if (choices.length === 0) return undefined;
+  // Mostly the crowd favourites (by score, whatever the list is sorted by),
+  // sometimes a wildcard so open tickets get a shot.
+  const favourites = choices
+    .filter((row) => row.stats)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
+  const pool = favourites.length > 0 && Math.random() < 0.75 ? favourites : choices;
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
@@ -88,29 +95,29 @@ export function PickForMe() {
   const [picked, setPicked] = useState<Row | null>(null);
 
   function roll() {
-    let next = pick(rows);
-    // Don't hand back the same answer twice in a row when there is a choice.
-    if (next && picked && next.spot.id === picked.spot.id && rows.length > 1) next = pick(rows);
-    setPicked(next ?? null);
+    setPicked(pick(rows, picked) ?? null);
   }
 
   return (
     <div className="pick-for-me">
       <button className="key key--chalk" type="button" onClick={roll} disabled={rows.length === 0}>
         <DotGlyph name="dice" />
-        <span className="ar" lang="ar" dir="rtl">
-          {picked ? 'غيرها' : 'اختارلي انت'}
-        </span>
         <span>{picked ? 'Again' : 'Pick for me'}</span>
+        <span className="ar" lang="ar" dir="rtl">
+          {picked ? 'غيرها' : 'اختارلي إنت'}
+        </span>
       </button>
       <p className="pick-for-me__out" aria-live="polite">
         {picked && (
           <Link href={`/spot/${picked.spot.id}`} className="pick-slip paper torn-b">
-            <span className="label muted">{filtered ? 'From your filters' : 'Today’s pick'}</span>
+            <span className="label muted">{filtered ? 'From your filters' : 'Try this'}</span>
             <span className="pick-slip__name cond">{picked.spot.brand}</span>
             <span className="label muted">
               {AREAS[picked.spot.area].en} ·{' '}
-              {picked.stats ? `${picked.stats.average.toFixed(1)}/5 from ${picked.stats.count}` : 'open ticket'} →
+              {picked.stats
+                ? `${picked.stats.average.toFixed(1)}/5 · ${plural(picked.stats.count, 'review')}`
+                : 'no reviews yet'}{' '}
+              <span aria-hidden="true">→</span>
             </span>
           </Link>
         )}

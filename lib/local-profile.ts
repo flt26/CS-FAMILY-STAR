@@ -1,6 +1,7 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
+import { cleanName, nameError } from './review-input';
 
 // What this device remembers: the nickname reviews are posted under, and the
 // verdicts it has given. Nothing here is an account — it lives in localStorage.
@@ -36,7 +37,12 @@ function subscribe(onChange: () => void) {
   };
 }
 
-const readNickname = () => read(NICKNAME_KEY) ?? read(LEGACY_NICKNAME_KEY) ?? '';
+// The first version asked for "Your Name / Student ID" and saved it under the
+// legacy key. Only offer a saved name again if it would pass as a nickname.
+function readNickname(): string {
+  const saved = read(NICKNAME_KEY) ?? read(LEGACY_NICKNAME_KEY) ?? '';
+  return nameError(cleanName(saved)) ? '' : saved;
+}
 const serverNickname = () => '';
 
 export function useNickname(): string {

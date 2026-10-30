@@ -14,7 +14,7 @@ export type DepartmentId = 'coffee' | 'quick' | 'sitdown' | 'egyptian';
 /** Four coarse aisles for the filter pad; the exact craving shows on each line. */
 export const DEPARTMENTS: Record<DepartmentId, { en: string; ar: string; cravings: CravingId[] }> = {
   coffee: { en: 'Coffee & sweets', ar: 'قهوة وحلو', cravings: ['coffee', 'bakery', 'sweets'] },
-  quick: { en: 'Quick bites', ar: 'سريع', cravings: ['burgers', 'chicken', 'pizza', 'sandwiches'] },
+  quick: { en: 'Quick bites', ar: 'أكل سريع', cravings: ['burgers', 'chicken', 'pizza', 'sandwiches'] },
   sitdown: { en: 'Sit-down', ar: 'قعدة', cravings: ['dining', 'italian', 'asian', 'grill'] },
   egyptian: { en: 'Egyptian', ar: 'مصري', cravings: ['egyptian'] },
 };
@@ -38,7 +38,10 @@ export const NICKNAMES = [
   'recursive_rice',
   'lambda_lunch',
   'hello_world',
-  'root@fue',
-  'byte_me',
+  'root_at_fue',
+  'megabite',
+  'koshary_overflow',
+  'falafel_fan',
+  'extra_daqqa',
   'off_by_one_falafel',
 ];

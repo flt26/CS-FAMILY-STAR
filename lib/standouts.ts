@@ -2,7 +2,7 @@ import type { Review, Scoreboard, SpotStats } from './reviews';
 import { rankScore } from './score';
 import { AREA_ORDER, SPOTS, type AreaId, type Spot } from './spots';
 
-export type TicketKind = 'top' | 'most' | 'campus' | 'fresh' | 'open';
+export type TicketKind = 'top' | 'most' | 'campus' | 'fresh' | 'open' | 'runner';
 
 export interface Ticket {
   kind: TicketKind;
@@ -14,7 +14,7 @@ export interface Ticket {
 
 const NEAR_CAMPUS: AreaId[] = ['fue', 'dreams', 'around'];
 
-/** Five tickets for the rail: the board's standouts, topped up with open tickets. */
+/** Five tickets for the rail: the board's standouts, topped up with open tickets, then runners-up. */
 export function pickStandouts(board: Scoreboard, recent: Review[], size = 5): Ticket[] {
   const used = new Set<string>();
   const tickets: Ticket[] = [];
@@ -48,5 +48,7 @@ export function pickStandouts(board: Scoreboard, recent: Review[], size = 5): Ti
     (a, b) => AREA_ORDER.indexOf(a.area) - AREA_ORDER.indexOf(b.area),
   );
   for (const spot of open) add('open', spot);
+  // Once every spot has a verdict, the next best fill the rail instead.
+  for (const spot of byScore) add('runner', spot);
   return tickets;
 }
