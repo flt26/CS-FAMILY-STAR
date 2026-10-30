@@ -1,55 +1,28 @@
-import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseClient';
+import { getSpotReviews } from '@/lib/reviews';
+import { isSpotId } from '@/lib/spots';
 
+// Read-only. Reviews are written through the submitReview server action, which
+// validates, rate-limits and uploads photos before anything reaches Supabase.
 export async function GET(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const restaurant_id = searchParams.get('restaurant_id');
-
-    if (!restaurant_id) {
-      return NextResponse.json({ error: 'Missing restaurant_id parameter' }, { status: 400 });
-    }
-
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('id, restaurant_id, rating, comment, user_name, image_url, created_at')
-      .eq('restaurant_id', restaurant_id)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json(data || []);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });
+  const spotId = new URL(request.url).searchParams.get('restaurant_id');
+  if (!isSpotId(spotId)) {
+    return Response.json({ error: 'Unknown restaurant_id' }, { status: 400 });
   }
-}
 
-export async function POST(request: Request) {
-  try {
-    const body = await request.json();
-    const { restaurant_id, rating, comment, user_name, image_url } = body;
-
-    const { data, error } = await supabase
-      .from('reviews')
-      .insert([
-        { 
-          restaurant_id, 
-          rating, 
-          comment, 
-          user_name: user_name || 'Anonymous Student',
-          image_url: image_url || null
-        }
-      ])
-      .select();
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json(data[0]);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });
+  const { ok, reviews } = await getSpotReviews(spotId);
+  if (!ok) {
+    return Response.json({ error: 'Reviews are unavailable right now' }, { status: 503 });
   }
+
+  return Response.json(
+    reviews.map((review) => ({
+      id: review.id,
+      restaurant_id: review.spotId,
+      rating: review.rating,
+      comment: review.comment,
+      user_name: review.name,
+      image_url: review.imageUrl,
+      created_at: review.createdAt,
+    })),
+  );
 }
